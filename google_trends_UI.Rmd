@@ -153,6 +153,8 @@ joined_data = growth_rate_weekly2  %>% left_join(StateUIClaims)  %>% filter(!is.
 
 
 
+*Note: Data+code for this are available here  https://docs.google.com/spreadsheets/d/1jlhCFX19FWZGVItv9j-9MB9L47p7Baf9jDzaNtT_jUY/edit?ts=5e74f03b#gid=0 and here https://github.com/paulgp/GoogleTrendsUINowcast *
+
 # Goal
 
 As the economy  grinds to a halt, we want to know the aggregate and state-level initial unemployment insurance (UI) claims. However, the data on UI comes out with lags and in weekly intervals (typically with a lag of 5-6 days). We would like to forecast these these UI numbers (specifically, below, we would like to forecast the UI numbers for the week of 3/15/2020-3/21/2020). The preliminary official numbers for this will be announced on Thursday, March 26.
