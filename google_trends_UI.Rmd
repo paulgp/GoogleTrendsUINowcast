@@ -7,8 +7,15 @@ output:
     df_print: paged
 ---
 
+<style type="text/css">
+.main-container {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
 ```{r setup, include=FALSE}
-opts <- options(knitr.kable.NA = "-")
 knitr::opts_chunk$set(echo = TRUE)
 # if (!require("devtools")) install.packages("devtools")
 # devtools::install_github("paulgp/gtrendsR")
@@ -56,7 +63,7 @@ pull_data = function(loc, time_window, panel=FALSE) {
 
 ```{r load-data2, cache=TRUE, results='hide', show=FALSE, include=FALSE}
 #Create geography
-# location_vec = tibble::enframe(name = NULL,state.abb) %>% mutate(geo = "US") %>%
+# location_vec = tibble::enframe(name = NULL,c(state.abb, "DC")) %>% mutate(geo = "US") %>%
 #   unite(location, geo, value, sep="-")
 # 
 # # Loop multiple times and average, following Seth's paper
@@ -65,10 +72,10 @@ pull_data = function(loc, time_window, panel=FALSE) {
 # panel_data = list()
 # for (i in seq(1,length(location_vec$location),4)) {
 #   if (i < 49) {
-#     panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+3)], time_window="2020-01-21 2020-03-20", panel=TRUE)
+#     panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+3)], time_window="2020-2-01 2020-3-22", panel=TRUE)
 #   }
 #   else {
-#      panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+1)], time_window="2020-01-21 2020-03-20", panel=TRUE)
+#      panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+2)], time_window="2020-2-01 2020-3-22", panel=TRUE)
 #   }
 #     # be polite
 #     Sys.sleep(.2)
@@ -94,8 +101,8 @@ pull_data = function(loc, time_window, panel=FALSE) {
 # 
 # data_states_short = data_full %>% group_by(location, date) %>% summarize(hits = mean(hits))
 # ## We do this b/c otherwise Google Trends API shuts us off  (already blocked for today)
-# data_states_short %>% write_csv("data_states_2020_01_21_2020_03_18b.csv")
-data_states_short = read_csv("data_states_2020_01_21_2020_03_18b.csv")
+# data_states_short %>% write_csv("data_states_2020_02_01_2020_03_30.csv")
+data_states_short = read_csv("data_states_2020_02_01_2020_03_30.csv") %>% filter(date < ymd("2020-03-21"))
 ```
 
 
@@ -141,12 +148,6 @@ growth_rate_weekly2 %>% write_csv("weekly_gtrends_growth.csv")
 joined_data = growth_rate_weekly2  %>% left_join(StateUIClaims)  %>% filter(!is.na(rate)) %>% 
   mutate(numdays = replace_na(numdays,0), numdays = floor(numdays))
 
-
-
-
-# joined_data = joined_data  %>%
-#   mutate(ui_growth = case_when(numdays < 4 ~ ui_growth))
-
 ```
 
 
@@ -156,19 +157,26 @@ joined_data = growth_rate_weekly2  %>% left_join(StateUIClaims)  %>% filter(!is.
 
 # Goal
 
-As the economy  grinds to a halt, we want to know the aggregate and state-level initial unemployment insurance (UI) claims. However, the data on UI comes out with lags and in weekly intervals (typically with a lag of 5-6 days). We would like to forecast these these UI numbers (specifically, below, we would like to forecast the UI numbers for the week of 3/15/2020-3/21/2020). The preliminary official numbers for this will be announced on Thursday, March 26.
+Understanding changes in national and state-level initial unemployment insurance (UI) claims has value to markets, policymakers, and economists. Initial claims measure the number of Americans filing new claims for UI benefits is one of the most-sensitive, high-frequency official statistics used to detect changes in the labor market. However, official federal data on UI claims comes out at a weekly interval and at a lag. The U.S. Department of Labor aggregates reports state unemployment insurance systems for weekly release of advance estimates on Thursdays, which covers the prior Sunday to Saturday week. They revise it over the following week, so official estimates are released 12 days after each week ends. We aim to forecast official UI initial claims statistics. 
 
-For the week of 3/15/2020-3/21/2020, we are greatly helped by many states reporting various numbers over the course of the week. The states partially released these numbers in press reports due the staggering growth in UI claims, with many states experiencing growth of 1000\% or more.  The first part of our approach gathers and harmonizes the various reported numbers across press reports to calculate an estimated "weekly" number.  In many cases, this involves extrapolating to a weekly number based on one or two days of reported information.See our discussion below in the Data section for more details.
+Below, we forecast initial claims nationally and by state for the week ending Saturday, March 21. The official, advance estimates will be released Thursday, March 26. This looks to be the week with the largest number of initial claims and the largest rise in unemployment in U.S. history, due to widespread quarantines. But just how large will this shock be?
 
-The second part of our approach imputes UI claims using data from Google Trends. We construct a dataset of the intensity of search for the term "file for unemployment", state-by-state. We then compare the level of this measure for the days between 3/15/2020-3/20/2020 relative to the four week average four weeks before, and call this our Google Trends change. We regress this measure on the set of states where we have constructed a weekly growth rate using news reports, and use this to impute the initial claims for all states.
+Many state agencies reported partial information to the press over the course of the week, due the staggering growth in UI claims. The first part of our approach gathers and harmonizes the reported numbers across press reports to calculate an estimated full-week claims statistic for as many states as possible. The Data section provides more details.
+<!-- In many cases, this involves extrapolating to a weekly number based on a few days of reported information. Taking the ratio of this to the average number of initial claims over the four, prior weeks measures change in initial claims for the subset of states with any reports this week. -->
 
-In the week of 3/22/2020-3/28/2020, we hope to forecast the UI claims rates using this model and the underlying Google trends data, once the data becomes available.
+The second part of our approach imputes state's UI claims harnessing data from Google Trends. We construct a dataset of the intensity of search for the term "file for unemployment" by state over time.  We regress this measure on the set of states where we have constructed a weekly growth rate using news reports, and use this to impute the initial claims for all states.
+
+<!-- We compare this measure during the week of interest, relative to the weekly average over the four prior weeks, and call this our Google Trends change. -->
+
+In the current week (ending March 28), we hope to forecast UI claims for the current week using this model and more-current Google trends data, as it becomes available.
+
 
 # Summary of Results
 
-We predict initial UI claims of between 3.25 and 3.3 million, depending on the exact specification.  To put this in context, this change would imply a 2 percentage point increase in the unemployment rate in a single week. The range of our confidence intervals depends on certain assumptions, with our widest range include 2.2 million and 4 million, and our less conservative range between 3 million and 3.5 million.
+For the week ending March 21, the model predicts initial UI claims nationally between 3.25 and 3.4 million, depending on exact specification. To put this in context, this would imply a 2 percentage point increase in the unemployment rate in a single week, jumping by more than half from 3.5 percent to 5.5 percent. The range of our confidence intervals depends on assumptions, with our widest range from 2.2 million to 4.2 million and our less conservative range between 3 million and 3.4 million.
 
-Across states, we see large variation, with the largest growth in UI claims in states like New Hampshire, Rhode Island and North Carolina. The smallest growths were in Georgia, West Virgina and Tennessee. 
+We predict large variation across states and the table below describes, for each state, the estimated claims level based only on reports, the Google Trends change and the forecast claims level based on the model combining information. 
+
 
 ```{r, echo=FALSE}
 
@@ -199,11 +207,13 @@ fitted_data = joined_data %>%
           combined_projection_naive= case_when(fitted == TRUE ~ projected_init_claims_naive,
                                          TRUE ~ projected_init_claims_aaron
                                          ))
-
-fitted_data %>% select(`State` = location, `Forecasted UI Claims` = combined_projection, `Forecasted Growth in UI` = combined_growth, `Google Trends Growth` = diff) %>%
+options(knitr.kable.NA = "--")
+fitted_data %>% select(`State` = location, `UI Claims From News` = projected_init_claims_aaron, 
+                       `Google Trends Change` = diff,
+                       `Forecasted UI Claims` = combined_projection ) %>%
   kable(digits = 0, format.args = list(big.mark = ",", scientific = FALSE)) %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
-  add_header_above(c(" " = 2, "Previous 4 week Avg to 3/15-3/21" = 2)) %>%
+  #add_header_above(c(" " = 2, "Previous 4 week Avg to 3/15-3/21" = 2)) %>%
   scroll_box(width = "800px", height = "400px")
 ```
 
@@ -212,17 +222,15 @@ fitted_data %>% select(`State` = location, `Forecasted UI Claims` = combined_pro
 
 ## News Sources
 
-For the week of 3/15/2020-3/21/2020, we are greatly helped by many states reporting various numbers over the course of the week.   The first part of our approach gathers and harmonizes the various reported numbers across press reports to calculate an estimated "weekly" number. 
+For the week ending March 21, we are greatly helped by many states reporting various numbers over the course of the week. We gather and harmonize the various reported numbers across press reports to calculate an estimated “weekly” number. We found reports for 35 states and the District of Columbia, leaving 15 states without any reports. See this website for the data: https://docs.google.com/spreadsheets/d/1jlhCFX19FWZGVItv9j-9MB9L47p7Baf9jDzaNtT_jUY/edit?ts=5e74f03b#gid=0  
 
-To measure weekly claims by state for the week March 15 to 21, we collect information from recent news reports on the number of new unemployment-insurance claims in each state. We found reports for 30 states. See this website for the data: https://docs.google.com/spreadsheets/d/1jlhCFX19FWZGVItv9j-9MB9L47p7Baf9jDzaNtT_jUY/edit?ts=5e74f03b#gid=0  Reports tend to describe the number of claims for a given set of dates ($R$) based on information from state officials. 
-
-We extrapolate this to measure claims for the whole week ($C$), differentiating only between week days and weekend days. Let $D$ be the number of weekdays and $E$ the number of weekend days represented in the report, $C_D$ be the average number of claims on any weekdays, and $C_E$ the average for a weekend day. Let their ratio be $r \equiv C_E/C_D$, about which there is empirical uncertainty and variation across the few states in which it is observable. If observable, we use empirical $r$ for the state. If not, we assume $r=1/7$ and test for sensitivity. 
+Reports tend to describe the number of claims for a given set of dates ($R$) based on information from state officials. We extrapolate this to measure claims for the whole week ($C$), differentiating only between week days and weekend days. Let $D$ be the number of weekdays and $E$ the number of weekend days represented in the report, $C_D$ be the average number of claims on any weekdays, and $C_E$ the average for a weekend day. Let their ratio be $r \equiv C_E/C_D$, about which there is empirical uncertainty and variation across the few states in which it is observable. If observable, we use empirical $r$ for the state. If not, we assume $r=1/3$ and test for sensitivity. 
 
 Sets of reported dates come in three types. First, if only reports on weekdays are available, we compute a weekday rate and measure weekly claims as $C = (5 + 2r) C_D$. Second, if weekend and weekdays are reported separately, $C = 5\times C_D + 2\times C_E$. Third, if the report $R$ contains information about total claims across both weekend and weekday dates but these are not separated, $C = (5+2r) \times R/(D+Er)$.
 
 ## Google Trends
 
-We also pull data from http://www.google.com/trends, a Google product that aggregates search volume by geography. Many papers have used this previously as measures of activity -- one example is Stephens-Davidowitz (2014).
+We pull data from http://www.google.com/trends, a Google product that aggregates search volume by geography. Many papers have used this previously as measures of activity -- one example is Stephens-Davidowitz (2014).
 
 The data is unusually reported. To quote Google:
 
@@ -234,7 +242,7 @@ More specifically, to quote Seth Stephens-Davidowitz:
 
 We pull a dataset of all fifty states, collecting an index of the relative search volume for "file for unemployment." A crucial feature of the Google Trends API is it is only possible to compare five locations per search. To elide this issue, we pull data for California plus four states, and continuously renormalize each state by $\max{Index_{s}}/\max{Index_{CA}}$. This way, all states are relative to California (and now some of the index measures will be larger than 100.), and comparisons can be made both across time and geographies.
 
-We pull data for all fifty states from January 18th to March 20th (the latest that the data is currently available). We plot the relative indices below, and see that similar to the UI growth in our news data, there is also substantial differences across states in the growth of the search term. Nevada experienced the largest growth overall, peaking on 3/18/2020.
+We pull data for all states from January 18th to March 20th (the latest that the data is currently available). We plot the relative indices below, and see that similar to the UI growth in our news data, there is also substantial differences across states in the growth of the search term. Nevada experienced the largest growth overall, peaking on 3/18/2020.
 
 
 ```{r, fig.height = 8, echo=FALSE, warning=FALSE, message=FALSE}
@@ -249,11 +257,11 @@ state_labels = data_states_short %>%
 regions <- read_excel("regions.xlsx")
 plot_data = data_states_short %>% filter(date >= ymd("2020-02-22")) %>%
               left_join(regions) %>%
-  group_by(location) %>% mutate(hits_lastday = case_when(row_number() ==n() ~ hits)) %>%
+  group_by(location) %>% mutate(hits_lastday = case_when(row_number() ==n()-1 ~ hits)) %>%
   group_by(bigregion) %>% mutate(max_index = max(hits, na.rm=TRUE),
                               min_index = min(hits_lastday, na.rm=TRUE)) %>%
   group_by(location) %>%
-  mutate(highlight_state = case_when(max_index == hits | min_index == hits | 
+  mutate(highlight_state = case_when(max_index == hits | (min_index == hits & row_number() == n()-1) | 
                                        ((location == "OH" | location == "CA") & row_number() == n()) ~ 1)) %>%
   mutate(highlight_state2 = max(highlight_state, na.rm=TRUE))
 
@@ -269,12 +277,13 @@ ggplot() +
   #strip.text.x = element_blank()
   strip.text = element_text(size=10)
   ) +
-  geom_text_repel(data = plot_data %>% filter(highlight_state == 1), aes(y = hits, x = date, label = location),
+  geom_text_repel(data = plot_data %>% filter(highlight_state == 1), 
+                  aes(y = hits, x = date, label = location),
                   nudge_x = 1.5, show.legend=FALSE) +
   facet_wrap(~bigregion) +
   labs(x = "Date",
        y = "",
-       title="Daily google searchs intensity for 'File for unemployment'",
+       title="Daily Google search intensity, by state, for 'File for unemployment'",
        subtitle = "From 2020-2-22 to 2020-3-20, highlighting select states"
   ) +
   geom_hline(yintercept = 0, linetype=3)
@@ -283,7 +292,10 @@ ggplot() +
 
 # Estimation
 
-Finally, we consider the relationship between these two measures. For the states where we have used news sources to estimate weekly UI claims, we construct a growth measure, relative to the average 4 week claims between 2/22-3/14, the four weeks prior. We then consider the weekly average of our Google trends measure, measured from Sunday to Saturday (the same as UI claims). We consider the *change* in the index between the most recent week (3/15-3/20) and the average from the last four weeks (2/22-3/14). We plot this scatter and report the bivariate regression below.
+Finally, we consider the relationship between these two measures. For the 35 states and D.C. where we could use news sources to estimate weekly UI claims, we construct a growth measure, relative to the average of the four prior weekly claims, ending Saturdays 2/22-3/14. We then consider the weekly average of our Google Trends measure, measured from Sunday to Saturday, same as the UI claims data. We consider the change in the Google Trends index between the most recent week (3/15-3/20) and the average from the last four weeks (2/22-3/14). 
+
+We plot the growth factor for news-based UI claims against the changes in Google Trends interest for the 36 observations and report the bivariate regression below. For instance, Ohioans increased their search interest in “file for unemployment” by a factor of 92, as shown on the horizontal. Extrapolation of news-based reports for Ohio across missing days suggest initial claims from the increased by a factor of 20 from the level of the prior 4 weeks, on the vertical.
+
 
 
 ```{r, echo=FALSE}
@@ -293,7 +305,7 @@ ggplot(data = joined_data ,
   geom_text(aes( label = location), na.rm=TRUE) + 
   geom_smooth(method="lm", na.rm=TRUE) +
   labs(x = "Difference in Google Trends index between this week and average of last 4 weeks",
-       y = "",
+       y = "Growth in UI claims",
        title = "Growth in UI claims and Google Search growth for 'file for unemployment'") +
   theme_classic()
 
@@ -301,7 +313,8 @@ summary(lm(ui_growth ~ diff, data = joined_data, na.action= na.exclude ), robust
 
 ```
 
-We find an adjusted $R^2$ of 0.22, which is remarkably good. We now use this model to predict the unemployment claims for the other states without data, and use this to aggregate.
+The model has an adjusted $R^2$ of 0.23. We next use this estimated model and observed Google Trends changes to predict unemployment claims for the 15 states lacking news-based estimates.
+
 
 ```{r, echo=FALSE}
 ggplot(data = fitted_data %>% mutate(ui_growth_hat = case_when(fitted == TRUE ~ pred,
@@ -310,17 +323,18 @@ ggplot(data = fitted_data %>% mutate(ui_growth_hat = case_when(fitted == TRUE ~ 
          aes(y = ui_growth_hat, x =diff)) + 
   geom_text(aes( label = location, color = as.factor(fitted)), na.rm=TRUE) + 
   labs(x = "Difference in Google Trends index between this week and average of last 4 weeks",
-       y = "",
+       y = "Growth in UI claims",
        title = "Growth in UI claims and Google Search growth for 'file for unemployment'",
        color = "Fitted Value") +
   theme_classic()
 ```
 
-Finally, we want to sum these values up to a single UI number. There are two ways to do this.
+Finally, we want to forecast the single statistic of national initial claims. We do this two ways. 
 
-First, we can just use the predicted values, and ignore the news sources (assume that they were useful enough to calibrate our model). Given this assumption, we predict 3.3 million UI claims, with a 95\% confidence interval of  2.4 million to 4.2 million.
+In model 1, we use only predicted claims values, using the news-based estimates only to "calibrate" the model. This approach predicts 3.3 million UI claims, with a 95\% confidence interval of 2.4 million to 4.2 million.
 
-Second, we assume that our news source estimates are true, and only incorporate the uncertainty / prediction for states we do not observe. In this case, we predict 3.25 million UI claims, with a 95\% CI of 3.02 million and 3.48 million.
+In model 2, we assume the news-based estimates are true (red) and incorporate the Google Trends data only to predict claims for states where we do not have news-based estimates (blue). In this case, we predict 3.25 million UI claims, with a 95\% CI of 3.0 million and 3.5 million.
+
 
 ```{r, echo=FALSE}
 model = lm(ui_growth ~ diff, data = joined_data, na.action= na.exclude )
