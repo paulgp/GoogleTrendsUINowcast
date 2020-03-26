@@ -1,0 +1,431 @@
+---
+title: "Predicting Initial Unemployment Insurance Claims Using Google Trends"
+author: "Paul Goldsmith-Pinkham + Aaron Sojourner"
+date: "3/25/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# if (!require("devtools")) install.packages("devtools")
+# devtools::install_github("paulgp/gtrendsR")
+
+#install.packages("RApiDatetime")
+
+library(gtrendsR)
+library(tidyverse)
+library(ggrepel)
+library(RApiDatetime)
+library(lubridate)
+library(zoo)
+library(knitr)
+library(readxl)
+library(kableExtra)
+
+pull_data = function(loc, time_window, panel=FALSE) {
+  if (panel==TRUE) {
+    geo = c("US-CA",loc)
+    res_post = gtrends(keyword=c("file for unemployment"),  geo = geo, 
+                       time = time_window, onlyInterest = TRUE)
+    state_data = res_post$interest_over_time %>%
+      mutate(hits = as.numeric(hits)) %>%
+      mutate(hits = replace_na(hits, 0))
+    cutoff = dim(res_post$interest_over_time)[1]/length(geo)
+    CA_max = state_data %>% filter(row_number() <= cutoff) 
+    ## We do the filter thing to drop the comparison state out. 
+    state_data = state_data %>% filter(row_number() > cutoff) %>% 
+      group_by(geo) %>% 
+      mutate(max_geo = max(hits), 
+             scale = max_geo / max(CA_max$hits),
+             hits = scale*hits)
+    return(list(state_data = state_data))
+  }
+  else {
+    geo = loc
+    res_post = gtrends(keyword=c("file for unemployment"),  geo = geo, 
+                       time = time_window, onlyInterest = TRUE)
+    state_data = res_post$interest_over_time %>%
+      mutate(hits = as.numeric(hits))
+    return(list(state_data = state_data))    
+  }
+}
+
+```
+
+```{r load-data2, cache=TRUE, results='hide', show=FALSE, include=FALSE}
+### Pull Daily Data
+#Create geography
+location_vec = tibble::enframe(name = NULL,c(state.abb, "DC")) %>% mutate(geo = "US") %>%
+  unite(location, geo, value, sep="-")
+
+# Loop multiple times and average, following Seth's paper
+data_full = tibble()
+for (j in seq(1,1)) {
+panel_data = list()
+for (i in seq(1,length(location_vec$location),4)) {
+  if (i < 49) {
+    panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+3)], time_window="2020-2-01 2020-3-25", panel=TRUE)
+  }
+  else {
+     panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+2)], time_window="2020-2-01 2020-3-25", panel=TRUE)
+  }
+    # be polite
+    Sys.sleep(.2)
+}
+
+panel_data_states = list()
+for (i in seq(1,length(panel_data))) {
+  panel_data_states[[i]] = panel_data[[i]]$state_data
+}
+
+# Parse data
+data_states_short = bind_rows(panel_data_states) %>%
+  mutate(location = substr(geo, 4,6)) %>%
+  ungroup() %>%
+  select(location, hits, date) %>%
+  mutate(date = ymd(date)) %>%
+  group_by(location, date) %>%
+  arrange(location, date)
+
+data_full = data_full %>% bind_rows(data_states_short)
+Sys.sleep(60)
+}
+
+data_states = data_full %>% group_by(location, date) %>% summarize(hits = mean(hits))
+## We do this b/c otherwise Google Trends API shuts us off  
+data_states %>% write_csv("data/data_states_2020_02_01_2020_03_30.csv")
+data_states = read_csv("data/data_states_2020_02_01_2020_03_30.csv") 
+```
+```{r}
+weekly_data = data_states %>% 
+  mutate(week = epiweek(date)) %>% group_by(week, location) %>% 
+  #mutate(hits = case_when(hits != 0 ~ hits)) %>%
+  summarize(hits = mean(hits, na.rm= TRUE), date = max(date)) %>% filter(month(date) > 1)
+
+growth_rate_weekly = weekly_data %>% group_by(location) %>% 
+   filter(week >= 8) %>%
+  select(location, hits = hits, week, date) %>%
+  mutate(late = case_when(week == 12 ~ "late",
+                          week == 13 ~ "late_nyt",
+                          TRUE ~ "early")) %>%
+  group_by(location, late) %>%
+  summarize(hits = mean(hits, na.rm=TRUE)) %>%
+  filter(!is.na(hits)) %>% spread(late, hits) %>%
+  mutate(rate = late/(early+1),
+         diff = late - early)
+```
+
+
+```{r load-data3, cache=TRUE, results='hide', show=FALSE, include=FALSE}
+### Pull *Recent* Daily Data
+#Create geography
+location_vec = tibble::enframe(name = NULL,c(state.abb, "DC")) %>% mutate(geo = "US") %>%
+  unite(location, geo, value, sep="-")
+
+# Loop multiple times and average, following Seth's paper
+data_full = tibble()
+for (j in seq(1,1)) {
+panel_data = list()
+for (i in seq(1,length(location_vec$location),4)) {
+  if (i < 49) {
+    panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+3)], time_window="2020-3-19 2020-3-25", panel=TRUE)
+  }
+  else {
+     panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+2)], time_window="2020-3-19 2020-3-25", panel=TRUE)
+  }
+    # be polite
+    Sys.sleep(.2)
+}
+
+panel_data_states = list()
+for (i in seq(1,length(panel_data))) {
+  panel_data_states[[i]] = panel_data[[i]]$state_data
+}
+
+# Parse data
+data_states_short = bind_rows(panel_data_states) %>%
+  mutate(location = substr(geo, 4,6)) %>%
+  ungroup() %>%
+  select(location, hits, date) %>%
+  mutate(date = ymd(date)) %>%
+  group_by(location, date) %>%
+  arrange(location, date)
+
+data_full = data_full %>% bind_rows(data_states_short)
+Sys.sleep(60)
+}
+
+data_states_recent = data_full %>% group_by(location, date) %>% summarize(hits = mean(hits))
+data_states_recent %>% write_csv("data/data_states_2020_03_19_2020_03_25.csv")
+```
+
+```{r load-data4, cache=TRUE, results='hide', show=FALSE, include=FALSE}
+### Load in Weekly UI data
+UI_Claims_March21 <- read_excel("data/UI_Claims_March21.xlsx", skip = 1) %>% 
+  filter(!is.na(State)) %>% select(location = State, ui_growth = GrowthFactor, baseline_ui = `2/22-3/14`)
+UI_Claims_March28 <- read_excel("data/UI_Claims_March28.xlsx", sheet = "Weekly_Summary", col_names = FALSE, skip = 4) %>%
+  select(location = ...1, baseline_ui =...2, proj_ui_lastwk = ...4, proj_ui_thiswk =...5) %>%
+  filter(!is.na(location))  %>%
+  mutate(baseline_ui = as.numeric(baseline_ui),
+         proj_ui_lastwk = as.numeric(proj_ui_lastwk),
+         proj_ui_thiswk = as.numeric(proj_ui_thiswk))
+
+### Load in Daily UI Data
+
+daily_UI_Claims = tibble()
+for (i in c(state.abb,"DC")) {
+  daily_UI_Claims = daily_UI_Claims %>% bind_rows(
+    read_excel("data/UI_Claims_March28.xlsx", sheet = i) %>%
+      select(date, ui_claims_daily = reported_claims...2) %>%
+      mutate(location = i))
+}
+
+daily_UI_Claims = daily_UI_Claims %>% filter(!is.na(ui_claims_daily)) %>%
+  mutate(date = date(date))
+
+unverified_ui <- read_excel("data/unverified_ui.xlsx") %>% gather(date, ui_claims_daily, -State) %>%
+  mutate(date = janitor::excel_numeric_to_date(as.numeric(date))) %>% rename(location_name = State) %>%
+  left_join(tibble(location_name = state.name, location = state.abb)) %>%
+  mutate(location = replace_na(location, "DC"))
+```
+
+```{r}
+
+
+### Index Within UI Variable
+daily_plot_data = daily_UI_Claims %>% 
+  left_join(data_states) %>%
+  left_join(UI_Claims_March28 %>% select(baseline_ui, location) %>% group_by(location) %>% filter(row_number() == n())) %>%
+  left_join(growth_rate_weekly %>% select(location, early)) %>%
+  group_by(location) %>% mutate(hits_first = first(hits),
+                                ui_first = first(ui_claims_daily)) %>%
+  mutate(ui_norm = ui_claims_daily/baseline_ui,
+         ui_index = ui_claims_daily/ui_first,
+         hits_norm = (hits - early),
+         hits_index = hits/(hits_first+1))
+  
+    
+
+#Daily Data
+ggplot(data = daily_plot_data %>% group_by(location) %>% mutate(num_obs = sum(!is.na(ui_index)))  %>% filter(num_obs > 3 & location != "MT")) +
+  #location %in% c("CT", "WI", "CA", "OH"))) +
+  geom_line(aes(y = ui_index, x = date, color = "UI Claims Index")) +
+  geom_line(aes(y = hits_index, x = date, color = "UI Search Index")) +
+  facet_wrap(~location, scales = "free_y") +
+  scale_x_date(date_breaks = "3 days", date_labels = "%m-%d") +
+  theme_classic() +
+  theme(
+  strip.background = element_blank(),
+  #strip.text.x = element_blank()
+  strip.text = element_text(size=10)
+  ) +
+  labs(x = "Date",
+       y = "UI Filing Index + Google Search Index",
+       title="Comparing Daily Google search intensity for 'File for unemployment' vs. UI Claims",
+       subtitle = "From 2020-3-15 to 2020-3-23, for reporting states. Index normalized by first observation."
+  )
+
+ggplot(data = daily_plot_data %>% group_by(location) %>% mutate(num_obs = sum(!is.na(ui_index))) ) +
+  geom_point(aes(y = ui_claims_daily/baseline_ui, x = hits - early, size = baseline_ui)) +
+  geom_smooth(aes(y = ui_claims_daily/baseline_ui, x = hits - early, weight = baseline_ui), method = "lm") +
+  theme_classic() +
+  theme(
+  strip.background = element_blank(),
+  #strip.text.x = element_blank()
+  strip.text = element_text(size=10)
+  ) +
+  labs(x = "Google Search Intensity",
+       y = "Growth in UI Filings relative to Baseline",
+       title="Comparing daily Google search intensity for 'File for unemployment' vs. UI Claims",
+       subtitle = "From 2020-3-15 to 2020-3-23, for reporting states. Index normalizes by baseline period."
+  ) 
+
+summary(lm(ui_claims_daily/baseline_ui ~ hits_norm, 
+           data =  daily_plot_data, weight = baseline_ui,
+           na.action = na.omit), robust=TRUE)
+model_daily = lm(ui_claims_daily/baseline_ui ~ hits_norm, data =  daily_plot_data, weight = baseline_ui)
+
+daily_predict_data = data_states %>%
+  left_join(growth_rate_weekly %>% select(location, early)) %>%
+  left_join(UI_Claims_March28 %>% select(baseline_ui, location) %>% group_by(location) %>% filter(row_number() == n())) %>%
+  mutate(ui_claims_daily_hat = baseline_ui*(((hits-early) * model_daily$coefficients[2]) + model_daily$coefficients[1]))%>%
+  left_join(daily_plot_data %>% select(location, date, ui_claims_daily)) 
+
+
+ggplot(data = daily_predict_data %>% filter(!is.na(ui_claims_daily)) ) +
+  geom_point(aes(y = ui_claims_daily_hat/baseline_ui, x = hits - early, size = baseline_ui, color = "Predicted Growth in UI")) +
+  geom_point(aes(y = ui_claims_daily/baseline_ui, x = hits - early, size = baseline_ui,  color = "Actual Growth in UI")) +
+  theme_classic() +
+  theme(
+  strip.background = element_blank(),
+  #strip.text.x = element_blank()
+  strip.text = element_text(size=10)
+  ) +
+  labs(x = "Change in Google Search Intensity",
+       y = "Growth in UI Filings",
+       title="Comparing daily Google search intensity for 'File for unemployment' vs. UI Claims",
+       subtitle = "From 2020-3-15 to 2020-3-23, for reporting states. Both measures relative to average of 2/22-3/14."
+  ) 
+
+ggplot(data = daily_predict_data %>% filter(date > ymd("2020-03-15"))) +
+  geom_line(aes(y = ui_claims_daily_hat/baseline_ui, x = date, group = as.factor(location)))
+
+
+```
+
+```{r}
+weekly_predict_data = daily_predict_data %>% mutate(week = epiweek(date)) %>% filter(week == 12 | week == 13) %>%
+  mutate(combined_prediction = case_when(is.na(ui_claims_daily) ~ ui_claims_daily_hat,
+                                         TRUE ~ ui_claims_daily)) %>%
+  select(location, date, hits, ui_claims_daily_hat, ui_claims_daily, combined_prediction, week) %>%
+  group_by(location, week) %>%
+  summarize(predicted_ui = sum(combined_prediction),
+            first_date = first(date),
+            last_date = last(date)) %>%
+  mutate(days = 1 + (last_date - first_date)) %>%
+  mutate(predicted_ui_conservative = case_when(week == 12 ~ predicted_ui,
+                                               TRUE ~ predicted_ui * (7/as.numeric(days)))) 
+
+weekly_predict_data
+
+ggplot(data = weekly_predict_data %>% left_join(
+    UI_Claims_March28 %>% select(baseline_ui, location) %>% group_by(location) %>% filter(row_number() == n())
+  )  %>%
+  mutate( rate_conservative = predicted_ui_conservative/ baseline_ui)) +
+  geom_col(aes(y = rate_conservative, x = reorder(location, -rate_conservative), fill=as.factor(week)), position="dodge2") +
+  coord_flip()
+
+weekly_predict_data %>% group_by(week) %>% summarize(predicted_ui_conservative = sum(predicted_ui_conservative))
+```
+
+
+
+```{r}
+#Old prediction
+
+joined_data = growth_rate_weekly  %>% left_join(UI_Claims_March21) %>% 
+  mutate(ui_growth = as.numeric(ui_growth)) %>%
+  mutate(proj_ui_thiswk = baseline_ui*as.numeric(ui_growth))   %>% 
+  mutate(week = 12) %>%
+  bind_rows(
+   growth_rate_weekly  %>% left_join(UI_Claims_March28) %>% 
+     mutate(ui_growth = proj_ui_thiswk / baseline_ui) %>% 
+     mutate(week = 13)
+) %>% select(-proj_ui_lastwk) %>%
+  mutate(hits_norm = case_when(week == 13 ~ late_nyt - early,
+                               week == 12 ~ late - early))
+
+ggplot(data = joined_data %>% filter(!is.na(ui_growth))) +
+  #geom_point(aes(y = ui_growth, x = hits_norm, size = baseline_ui)) +
+  geom_text(aes(y = ui_growth, x = hits_norm, label=location, color=as.factor(week))) +
+  geom_smooth(aes(y = ui_growth, x = hits_norm, weight = baseline_ui), method = "lm") +
+  theme_classic() +
+  theme(
+  strip.background = element_blank(),
+  #strip.text.x = element_blank()
+  strip.text = element_text(size=10)
+  ) +
+  labs(x = "Google Search Intensity",
+       y = "Growth in UI Filings relative to Baseline",
+       title="Comparing daily Google search intensity for 'File for unemployment' vs. UI Claims",
+       subtitle = "From 2020-3-15 to 2020-3-23, for reporting states. Index normalizes by baseline period."
+  ) 
+
+model_fit_diff = lm(ui_growth ~ hits_norm, data = joined_data, na.action= na.exclude)
+model_fit_diff_weighted = lm(ui_growth ~ hits_norm, data = joined_data, 
+                                na.action= na.exclude, weight = baseline_ui)
+summary(model_fit_diff)
+summary(model_fit_diff_weighted)
+# %>% filter(!is.na(rate)) %>% 
+#   mutate(numdays = replace_na(numdays,0), numdays = floor(numdays))
+# 
+# model_fit_diff_weighted = lm(ui_growth ~ diff, data = joined_data, 
+#                              na.action= na.exclude, weight = baseline)
+
+fitted_data = joined_data %>% 
+  ungroup() %>%
+  mutate(fitted = is.na(ui_growth),
+         pred = model_fit_diff$coefficients[1] + model_fit_diff$coefficients[2]*diff,
+         projected_init_claims = pred*baseline_ui,
+         pred_weight = model_fit_diff_weighted$coefficients[1]+
+           model_fit_diff_weighted$coefficients[2]*diff,
+         projected_init_claims_weight = pred_weight*baseline_ui
+  ) %>%
+  ungroup() %>% 
+  mutate(combined_projection = case_when(fitted == TRUE ~ projected_init_claims,
+                                         TRUE ~ proj_ui_thiswk
+                                         ),
+         combined_growth = case_when(fitted = TRUE ~ pred,
+                                     TRUE ~ ui_growth),
+         combined_projection_weight = case_when(fitted == TRUE ~ projected_init_claims_weight,
+                                         TRUE ~ proj_ui_thiswk
+                                         ))
+options(knitr.kable.NA = "--")
+fitted_data %>% select(`State` = location, `UI Claims From News` = proj_ui_thiswk, 
+                       `Google Trends Change` = diff,
+                       `Forecasted UI Claims` = combined_projection ) %>%
+  kable(digits = 0, format.args = list(big.mark = ",", scientific = FALSE)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  #add_header_above(c(" " = 2, "Previous 4 week Avg to 3/15-3/21" = 2)) %>%
+  scroll_box(width = "800px", height = "400px")
+
+model = model_fit_diff_weighted
+se.sum = sum(predict(model, 
+                     newdata = joined_data %>% filter(week == 12), se.fit = TRUE)$se.fit * joined_data$baseline_ui )
+fit.sum =  sum(predict(model, newdata = joined_data  %>% filter(week == 12), se.fit = TRUE)$fit *  joined_data$baseline_ui )
+
+
+
+fitted2 = fitted_data  %>% filter(week == 12) %>% 
+  bind_cols(tibble(se = predict(model, newdata = joined_data %>% filter(week == 12), se.fit = TRUE)$se.fit)) %>%
+  mutate(se2 = case_when(fitted == TRUE ~ se*baseline_ui,
+                                       TRUE ~ 0)) 
+
+se2.sum = sum(fitted2$se2)
+fit2.sum = sum(fitted2$combined_projection)
+
+
+output = tibble(`Model 1 Output` = fit.sum, `Model 1 Output CI Lower` = fit.sum-2*se.sum, `Model 1 Output CI Upper` = fit.sum+2*se.sum,
+                `Model 2 Output` = fit2.sum, `Model 2 Output CI Lower` = fit2.sum-2*se2.sum, `Model 2 Output CI Upper` = fit2.sum+2*se2.sum,)
+
+output  %>% kable(digits = 3, format.args = list(big.mark = ",", scientific = FALSE)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+
+```{r}
+
+model = model_fit_diff_weighted
+se.sum = sum(predict(model, 
+                     newdata = joined_data %>% filter(week == 13), se.fit = TRUE)$se.fit * joined_data$baseline_ui )
+fit.sum =  sum(predict(model, newdata = joined_data  %>% filter(week == 13), se.fit = TRUE)$fit *  joined_data$baseline_ui )
+
+
+
+fitted2 = fitted_data  %>% filter(week == 13) %>% 
+  bind_cols(tibble(se = predict(model, newdata = joined_data %>% filter(week == 13), se.fit = TRUE)$se.fit)) %>%
+  mutate(se2 = case_when(fitted == TRUE ~ se*baseline_ui,
+                                       TRUE ~ 0)) 
+
+se2.sum = sum(fitted2$se2)
+fit2.sum = sum(fitted2$combined_projection)
+
+
+output = tibble(`Model 1 Output` = fit.sum, `Model 1 Output CI Lower` = fit.sum-2*se.sum, `Model 1 Output CI Upper` = fit.sum+2*se.sum,
+                `Model 2 Output` = fit2.sum, `Model 2 Output CI Lower` = fit2.sum-2*se2.sum, `Model 2 Output CI Upper` = fit2.sum+2*se2.sum,)
+
+output  %>% kable(digits = 3, format.args = list(big.mark = ",", scientific = FALSE)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
