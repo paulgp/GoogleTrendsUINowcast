@@ -272,6 +272,18 @@ weekly_predict_data = daily_predict_data %>%
 ```
 
 
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+output = weekly_predict_data %>% 
+  mutate(week_str = case_when(week == 12 ~ "3/15-3/21",
+                              week == 13 ~ "3/22-3/28")) %>%
+    group_by(week_str) %>%
+  select(week_str, predicted_ui, predicted_ui_lb, predicted_ui_ub) %>%
+  summarize_all(sum) %>% mutate(predicted_ui = predicted_ui/ 1000000, predicted_ui_lb = predicted_ui_lb   / 1000000, predicted_ui_ub = predicted_ui_ub / 1000000)
+
+```
+
+
 *Note: Data+code for this are available here  https://docs.google.com/spreadsheets/d/1WYgGMTHO43_oDoLz25WBoQFGrZt7ai64asgzh5ckjRQ/edit?usp=sharing and here https://github.com/paulgp/GoogleTrendsUINowcast *
 
 **Many thanks to Dylan Piatt and Zach Swaziek for their help with this**
@@ -285,17 +297,15 @@ Below, we forecast initial claims nationally and by state for the week ending Sa
 Many state agencies reported partial information to the press over the course of the week, due the staggering growth in UI claims. The first part of our approach gathers and harmonizes the reported numbers across press reports to calculate a estimated  claims for as many states as possible. The Data section provides more details.
 <!-- In many cases, this involves extrapolating to a weekly number based on a few days of reported information. Taking the ratio of this to the average number of initial claims over the four, prior weeks measures change in initial claims for the subset of states with any reports this week. -->
 
-The second part of our approach imputes state's UI claims harnessing data from Google Trends. We construct a dataset of the intensity of search for the term "file for unemployment" by state over time.  We regress this measure on the set of states where we have constructed a growth rate in UI claims using news reports, and use this to impute the initial claims for all states. We do this in two ways: 1) using the daily change in UI rates for states where we have daily data, and 2) aggregating to the weekly level and using weekly predictions. In the current week (ending March 28), we hope to forecast UI claims for the current week using this model and more-current Google trends data, as it becomes available.
-
-
-<!-- We compare this measure during the week of interest, relative to the weekly average over the four prior weeks, and call this our Google Trends change. -->
-
+The second part of our approach imputes state's UI claims harnessing data from Google Trends. We construct a dataset of the intensity of search for the term "file for unemployment" by state over time.  We regress this measure on the set of states where we have constructed a growth rate in UI claims using news reports, and use this to impute the initial claims for all states. We do this in two ways: 1) using the daily change in UI rates for states where we have daily data, and 2) aggregating to the weekly level and using weekly predictions. In the current week (ending March 28), we  forecast UI claims for the current week using the daily model and more-current Google trends data.
 
 These models are new and unvalidated. So we present a few sensible, alternative versions and hope to learn over time how they perform and how they can be improved. We always welcome feedback (asojourn@umn.edu).
 
 # Summary of Results
 
 For the week ending March 21, the models presented yield initial UI claims nationally between 3.4 and 3.84 million, depending on exact specification. To put this in context, 3.4 million Americans moving from employment to unemployment would imply a 2 percentage point increase in the unemployment rate in a single week, jumping by more than half from 3.5 percent to 5.5 percent. The range of our confidence intervals depends on assumptions, with our daily model yielding a range of 3.609	to 4.07 million around an estimate of 3.84 million, and our preferred weekly model yielding a range of 3.11 to 	3.56 million around estimate of 3.34 million.
+
+For the week of 3/22-3/28, we need to extrapolate Google Trends interest for the rest of the week. Google Trends interest shows that Sunday, March 22, the first day that will be included in the report, was 500 percent higher than the prior Sunday and Monday 250 percent higher than the prior Monday. Combining this information with our model and conservatively assuming that the search interest will remain flat at its current level through Saturday 3/28, implies a prediction of `r round(output$predicted_ui[2], digits = 2)` million UI claims, with a 95\% CI of `r round(output$predicted_ui_lb[2], digits = 2)` million and `r round(output$predicted_ui_ub[2], digits = 2)` million for the week of 3/22-3/28.
 
 We predict large variation across states and the table below describes, for each state, the estimated claims level based only on extrapolation from news reports, the Google Trends change and the forecast claims level based on the model combining news reports and Google Trends information. 
 
@@ -332,7 +342,8 @@ output2 = fitted_data %>% select(`State` = location, `UI Claims From News` = pro
                        `Forecasted UI Claims` = combined_projection ) 
 
 options(knitr.kable.NA = "--")
-weekly_predict_data %>% ungroup() %>% select(-week) %>%
+weekly_predict_data %>% ungroup() %>% filter(week == 12) %>%
+  select(-week) %>%
   left_join(UI_Claims_March21_True) %>%
   select(`State` = location,
          Advance,
@@ -549,16 +560,6 @@ ggplot(data = daily_predict_data %>% filter(!is.na(ui_claims_daily)) ) +
 
 Finally, we want to forecast the single statistic of weekly national initial claims. First, we assume the news-based estimates are true (red) and incorporate the Google Trends data only to predict claims for states where we do not have news-based estimates (blue). We then sum up these predicted measures across states for the week ending 3/21.
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
-
-output = weekly_predict_data %>% 
-  mutate(week_str = case_when(week == 12 ~ "3/15-3/21",
-                              week == 13 ~ "3/22-3/28")) %>%
-    group_by(week_str) %>%
-  select(week_str, predicted_ui, predicted_ui_lb, predicted_ui_ub) %>%
-  summarize_all(sum) %>% mutate(predicted_ui = predicted_ui/ 1000000, predicted_ui_lb = predicted_ui_lb   / 1000000, predicted_ui_ub = predicted_ui_ub / 1000000)
-
-```
 
 In this case, we predict `r round(output$predicted_ui[1], digits = 2)` million UI claims, with a 95\% CI of `r round(output$predicted_ui_lb[1], digits = 2)` million and `r round(output$predicted_ui_ub[1], digits = 2)` million for the week of 3/15-3/21.
 
