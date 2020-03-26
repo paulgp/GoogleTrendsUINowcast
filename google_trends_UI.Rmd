@@ -270,18 +270,19 @@ Below, we forecast initial claims nationally and by state for the week ending Sa
 Many state agencies reported partial information to the press over the course of the week, due the staggering growth in UI claims. The first part of our approach gathers and harmonizes the reported numbers across press reports to calculate a estimated  claims for as many states as possible. The Data section provides more details.
 <!-- In many cases, this involves extrapolating to a weekly number based on a few days of reported information. Taking the ratio of this to the average number of initial claims over the four, prior weeks measures change in initial claims for the subset of states with any reports this week. -->
 
-The second part of our approach imputes state's UI claims harnessing data from Google Trends. We construct a dataset of the intensity of search for the term "file for unemployment" by state over time.  We regress this measure on the set of states where we have constructed a growth rate in UI claims using news reports, and use this to impute the initial claims for all states. We do this in two ways: 1) using the daily change in UI rates for states where we have daily data, and 2) aggregating to the weekly level and using weekly predictions.
+The second part of our approach imputes state's UI claims harnessing data from Google Trends. We construct a dataset of the intensity of search for the term "file for unemployment" by state over time.  We regress this measure on the set of states where we have constructed a growth rate in UI claims using news reports, and use this to impute the initial claims for all states. We do this in two ways: 1) using the daily change in UI rates for states where we have daily data, and 2) aggregating to the weekly level and using weekly predictions. In the current week (ending March 28), we hope to forecast UI claims for the current week using this model and more-current Google trends data, as it becomes available.
+
 
 <!-- We compare this measure during the week of interest, relative to the weekly average over the four prior weeks, and call this our Google Trends change. -->
 
-In the current week (ending March 28), we hope to forecast UI claims for the current week using this model and more-current Google trends data, as it becomes available.
 
+These models are new and unvalidated. So we present a few sensible, alternative versions and hope to learn over time how they perform and how they can be improved. We always welcome feedback (asojourn@umn.edu).
 
 # Summary of Results
 
-For the week ending March 21, the model predicts initial UI claims nationally between 3.4 and 3.84 million, depending on exact specification. To put this in context, this would imply a 2 percentage point increase in the unemployment rate in a single week, jumping by more than half from 3.5 percent to 5.5 percent. The range of our confidence intervals depends on assumptions, with our widest range from 2.2 million to 4.2 million and our less conservative range between 3 million and 3.4 million.
+For the week ending March 21, the models presented yield initial UI claims nationally between 3.4 and 3.84 million, depending on exact specification. To put this in context, 3.4 million Americans moving from employment to unemployment would imply a 2 percentage point increase in the unemployment rate in a single week, jumping by more than half from 3.5 percent to 5.5 percent. The range of our confidence intervals depends on assumptions, with our daily model yielding a range of 3.609	to 4.07 million around an estimate of 3.84 million, and our preferred weekly model yielding a range of 3.11 to 	3.56 million around estimate of 3.34 million.
 
-We predict large variation across states and the table below describes, for each state, the estimated claims level based only on reports, the Google Trends change and the forecast claims level based on the model combining information. 
+We predict large variation across states and the table below describes, for each state, the estimated claims level based only on extrapolation from news reports, the Google Trends change and the forecast claims level based on the model combining news reports and Google Trends information. 
 
 ```{r, echo = FALSE, warning=FALSE, message=FALSE}
 
@@ -338,9 +339,11 @@ weekly_predict_data %>% ungroup() %>% select(-week) %>%
 
 ## News Sources
 
-For the week ending March 21, we are greatly helped by many states reporting various numbers over the course of the week. We gather and harmonize the various reported numbers across press reports to calculate an estimated “weekly” number. We found reports for 35 states and the District of Columbia, leaving 15 states without any reports. See this website for the data: https://docs.google.com/spreadsheets/d/1WYgGMTHO43_oDoLz25WBoQFGrZt7ai64asgzh5ckjRQ/edit?usp=sharing
+For the week ending March 21, we are greatly helped by many states reporting various claims numbers over the course of the week. We gather and harmonize the various reported numbers across press reports to calculate an estimated “weekly” number. We found reports for 35 states and the District of Columbia, leaving 15 states without any reports. See this website for the data: https://docs.google.com/spreadsheets/d/1WYgGMTHO43_oDoLz25WBoQFGrZt7ai64asgzh5ckjRQ/edit?usp=sharing
 
-Reports tend to describe the number of claims for a given set of dates ($R$) based on information from state officials. For our estimation below, we use the data sources at the at the daily frequency to exploit additional variation that is available in the Google Trends data. In addition, we manually extrapolate the claims for the whole week ($C$), differentiating only between week days and weekend days.
+Reports tend to describe the number of claims for a given set of dates ($R$) based on information from state officials. For our estimation below, in some models, we use the data sources at the daily frequency to exploit additional variation that is available in the Google Trends data. In other models, we manually extrapolate the claims for the whole week ($C$). 
+
+The weekly model relates states’ weekly averages in Google Trends and UI claims treating each as constant across the week, and differentiating only between week days and weekend days. The daily models use variation in Google Trends over the week to try to predict within-week-state changes in claims.
 
 ### Extrapolation of reports to weekly claims
 
@@ -462,7 +465,7 @@ Finally, we consider the relationship between these two measures. There are two 
 
 ## Daily Data
 
-For 27 locations, we are able to use news sources to estimate daily UI claims, for a total of 89 state-day observations. With these claims, we construct a growth measure, relative to the average of the four prior weekly claims, ending Saturdays 2/22-3/14. We consider the change in the Google Trends index between the most recent week (3/15-3/20) and the day of the week average from the last four weeks (2/22-3/14). We then plot these two measures to consider how correlated the Google Trends search intensity is with UI growth. 
+For 27 locations, we are able to use news sources to estimate daily UI claims, for a total of 89 state-day observations. With these claims data points, we construct a growth measure, relative to each state’s the average of initial claims in the four prior weeks, ending Saturdays 2/22-3/14. We consider the change in the Google Trends index between the most recent week (3/15-3/21) and the day of the week average from the last four weeks (2/22-3/14). We then plot these two measures to consider how correlated the change in Google Trends search intensity is with UI growth.
 
 ```{r, fig.height = 8, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -504,7 +507,7 @@ summary(lm(ui_claims_daily/baseline_ui ~ hits_norm,
            na.action = na.omit), robust=TRUE)
 ```
 <!-- FIX AFTER INCLUDING NEW WEEK -->
-We find a strong relationship between the two variables, with an adjusted $R^{2}$ of 0.38 with an unweighted bivariate regression, and an adjusted $R^{2}$ of 0.5953 when we weight by baseline UI claims. In our results below, we focus on the estimates from the weighted regression. We use this estimated model and observed Google Trends changes to predict unemployment claims for the states lacking news-based estimates.
+We find a strong relationship between the two variables, with an adjusted $R^{2}$ of 0.38 with an unweighted bivariate regression, and an adjusted $R^{2}$ of 0.5953 when we weight observations by the states' baseline UI claims. In our results below, we focus on the estimates from the weighted regression. We use this estimated model and observed Google Trends changes to predict unemployment claims for the states lacking news-based estimates.
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -527,9 +530,9 @@ ggplot(data = daily_predict_data %>% filter(!is.na(ui_claims_daily)) ) +
 
 ```
 
-Finally, we want to forecast the single statistic of weekly state-level and national initial claims. We do this as follows. First, we assume the news-based estimates are true (red) and incorporate the Google Trends data only to predict claims for states where we do not have news-based estimates (blue). We then sum up these predicted measures for state in for the week of 3/15-3/21. 
+Finally, we want to forecast the single statistic of weekly national initial claims. First, we assume the news-based estimates are true (red) and incorporate the Google Trends data only to predict claims for states where we do not have news-based estimates (blue). We then sum up these predicted measures across states for the week ending 3/21.
 
-In this case, we predict 3.99 million UI claims, with a 95\% CI of 3.0 million and 3.5 million.
+In this case, we predict 3.99 million UI claims, with a 95\% CI of 3.6 million and 4.1 million.
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -547,8 +550,6 @@ output  %>%  ungroup() %>% select(-week, `Predicted UI Claims (millions)` = pred
 ## Weekly Data
 
 For the 35 states and D.C. where we could use news sources to estimate weekly UI claims, we construct a growth measure, relative to the average of the four prior weekly claims, ending Saturdays 2/22-3/14. We then consider the weekly average of our Google Trends measure, measured from Sunday to Saturday, same as the UI claims data. We consider the change in the Google Trends index between the most recent week (3/15-3/20) and the average from the last four weeks (2/22-3/14). 
-
-
 
 We plot the growth factor for news-based UI claims against the changes in Google Trends interest for the 36 observations and report the bivariate regression below. For instance, Ohioans increased their search interest in “file for unemployment” by a factor of 92, as shown on the horizontal. Extrapolation of news-based reports for Ohio across missing days suggest initial claims from the increased by a factor of 20 from the level of the prior 4 weeks, on the vertical.
 
@@ -588,9 +589,9 @@ ggplot(data = fitted_data %>% mutate(ui_growth_hat = case_when(fitted == TRUE ~ 
 
 Finally, we want to forecast the single statistic of national initial claims. We do this two ways. 
 
-In model 1, we use only predicted claims values, using the news-based estimates only to "calibrate" the model. This approach predicts 3.3 million UI claims, with a 95\% confidence interval of 2.4 million to 4.2 million.
+In model 1, we use only predicted claims values, using the news-based estimates only to "calibrate" the model. This approach predicts 3.4 million UI claims, with a 95\% confidence interval of 2.5 million to 4.3 million.
 
-In model 2, we assume the news-based estimates are true (red) and incorporate the Google Trends data only to predict claims for states where we do not have news-based estimates (blue). In this case, we predict 3.25 million UI claims, with a 95\% CI of 3.0 million and 3.5 million.
+In model 2, we assume the news-based estimates are true (red) and incorporate the Google Trends data only to predict claims for states where we do not have news-based estimates (blue). In this case, we predict 3.3 million UI claims, with a 95\% CI of 3.1 million and 3.6 million.
 
 
 ```{r, echo=FALSE}
