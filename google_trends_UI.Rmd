@@ -438,7 +438,7 @@ report_output = weekly_predict_data %>% ungroup() %>% filter(week == 12 | week =
 ```
 
 
-*Note: Data+code for this are available here  https://docs.google.com/spreadsheets/d/1WYgGMTHO43_oDoLz25WBoQFGrZt7ai64asgzh5ckjRQ/edit?usp=sharing and here https://github.com/paulgp/GoogleTrendsUINowcast *
+*Note: Data+code for this are available here  https://docs.google.com/spreadsheets/d/1RN1XJLIpU12QUwMpkF0DNiV8fkeqdHbWHta2sRfEZT4/edit#gid=651560 and here https://github.com/paulgp/GoogleTrendsUINowcast *
 
 **Many thanks to Dylan Piatt and Zach Swaziek for their help with this**
 
@@ -446,20 +446,50 @@ report_output = weekly_predict_data %>% ungroup() %>% filter(week == 12 | week =
 
 Understanding changes in national and state-level initial unemployment insurance (UI) claims has value to markets, policymakers, and economists. Initial claims measure the number of Americans filing new claims for UI benefits is one of the most-sensitive, high-frequency official statistics used to detect changes in the labor market. However, official federal data on UI claims comes out at a weekly interval and at a lag. The U.S. Department of Labor aggregates reports state unemployment insurance systems for weekly release of advance estimates on Thursdays, which covers the prior Sunday to Saturday week. They revise it over the following week, so official estimates are released 12 days after each week ends. We aim to forecast official UI initial claims statistics. 
 
-Below, we forecast initial claims nationally and by state for the week ending Saturday, March 28. The official, advance estimates will be released Thursday, April 2. While last week was a record-setting week, this week's UI numbers look poised to break that record again, with the largest rise in unemployment in U.S. history, due to widespread quarantines. But just how large will this shock be?
+Below, we forecast initial claims nationally and by state for the week ending Saturday, March 28. The official, advance estimates will be released Thursday, April 2. While last week was a record-setting week, this week's UI numbers look poised to break that record again, with the largest rise in new unemployment claims in U.S. history, due to widespread quarantines. But just how large will this shock be?
 
-Many state agencies reported partial information to the press over the course of the week, due the staggering growth in UI claims. The first part of our approach gathers and harmonizes the reported numbers across press reports to construct news report measures of daily UI claims. The Data section provides more details.
+Many state agencies reported partial information to the press over the course of the week, due the staggering growth in UI claims. The first part of our approach gathers and harmonizes the reported numbers across press reports to construct news report measures of UI claims in a state over a set of days. The Data section provides more details.
 <!-- In many cases, this involves extrapolating to a weekly number based on a few days of reported information. Taking the ratio of this to the average number of initial claims over the four, prior weeks measures change in initial claims for the subset of states with any reports this week. -->
 
-The second part of our approach imputes state's UI claims harnessing data from Google Trends. We construct a daily panel dataset of the intensity of search for the term "file for unemployment" across state  We regress this measure on the set of states where we have constructed a growth rate in UI claims using news reports, and use this to impute the initial claims for all states. We do this by forecasting UI claims  using the estimated daily model and the panel of Google trends data.
+The second part of our approach imputes state's UI claims harnessing data from Google Trends. We construct a daily panel dataset of the intensity of search for the term "file for unemployment" for each state. We regress this measure on the set of day-states where we have constructed a growth rate in UI claims using news reports, and use this to impute the initial claims for all states. We do this by forecasting UI claims using the estimated daily model and the panel of Google trends data.
 
 These models are new and only partially validated.  We always welcome feedback (asojourn@umn.edu).
 
 # Summary of Results
 
-For the week ending March 21, the model yields initial national UI claims (seasonally adjusted)   of `r round(report_output_text$predicted_ui_sa[1], digits = 2)`. To put this in context,  `r round(report_output_text$predicted_ui_sa[1], digits = 1)` million Americans moving from employment to unemployment would imply a 2.7 percentage point increase in the unemployment rate in a single week, jumping by more than half from 3.5 percent to over 6 percent. Our confidence intervals range from `r round(report_output_text$predicted_ui_lb_sa[1], digits = 2)`	to `r round(report_output_text$predicted_ui_ub_sa[1], digits = 2)` million. Relative to the advance estimates from the state, this number is high. Further below, we discuss reasons for this, mainly related to seemingly low UI numbers from states which had had news reports suggesting much higher numbers. This discrepency is likely due to overwhelmed UI offices in these states. 
+For the week ending March 21, the model yields initial national UI claims (seasonally adjusted)   of `r round(report_output_text$predicted_ui_sa[1], digits = 1)`. Our confidence intervals range from `r round(report_output_text$predicted_ui_lb_sa[1], digits = 1)`	to `r round(report_output_text$predicted_ui_ub_sa[1], digits = 1)` million. Relative to the advance estimates from the state, this number is high. Further below, we discuss reasons for this, mainly related to seemingly low UI numbers from states which had had news reports suggesting much higher numbers. This discrepancy is likely due to overwhelmed UI offices in these states.
 
-For the week of 3/22-3/28, we use the estimated relationship from 3/15-3/21 between Google Trends interest and UI claims to predict claims for the rest of the week. Google Trends interest shows that Sunday, March 22, the first day that will be included in the report, was 500 percent higher than the prior Sunday and Monday 250 percent higher than the prior Monday. Search interest continued to be extremely high throughout the week. Combining this information with our model implies a prediction of `r round(report_output_text$predicted_ui_sa[2], digits = 2)` million UI claims, seasonally adjusted, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[2], digits = 2)` million and `r round(report_output_text$predicted_ui_ub_sa[2], digits = 2)` million for the week of 3/22-3/28.
+For the week of 3/22-3/28, we use the estimated relationship from 3/15-3/21 between Google Trends interest and UI claims to predict initial claims. Our model implies a prediction of `r round(report_output_text$predicted_ui_sa[2], digits = 1)` million UI claims, seasonally adjusted, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[2], digits = 1)` million and `r round(report_output_text$predicted_ui_ub_sa[2], digits = 1)` million for the week of 3/22-3/28.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+weekly_predict_data  %>%  ungroup() %>% 
+  mutate(week_str = case_when(week == 12 ~ "3/15-3/21",
+                                      week == 13 ~ "3/22-3/28")) %>% 
+  group_by(week_str) %>%
+  mutate(predicted_ui_report = predicted_ui_report/1e6,
+         predicted_ui_lb_report = predicted_ui_lb_report/1e6,
+         predicted_ui_ub_report = predicted_ui_ub_report/1e6) %>% 
+  mutate(predicted_ui_sa = case_when(week == 12 ~ predicted_ui_report/0.833,
+                                     week == 13 ~ predicted_ui_report/0.876),
+         predicted_ui_lb_sa = case_when(week == 12 ~ predicted_ui_lb_report/0.833,
+                                     week == 13 ~ predicted_ui_lb_report/0.876),
+         predicted_ui_ub_sa = case_when(week == 12 ~ predicted_ui_ub_report/0.833,
+                                     week == 13 ~ predicted_ui_ub_report/0.876)) %>%
+  select(week_str, ends_with("report"), ends_with("sa")) %>%
+  summarize_all(sum) %>%
+  kable(digits = 1, format.args = list(big.mark = ",", scientific = FALSE),
+        col.names = c("Week", "Predicted UI Claims (millions)", 
+                                  "Lower Bound",
+                                  "Upper Bound",
+                      "Predicted UI Claims (millions)", 
+                                  "Lower Bound",
+                                  "Upper Bound")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  add_header_above(c(" " = 2, "95% Confidence Interval" = 2, " " = 1, "95% Confidence Interval" = 2)) %>%
+  add_header_above(c(" " = 1, "Not Seasonally Adjusted" = 3, "Seasonally Adjusted" = 3))
+```
+
 
 We predict large variation across states and the table below describes, for each state, the estimated claims level based only on extrapolation from news reports, the Google Trends change and the forecast claims level based on the model combining news reports and Google Trends information. These state estimates are not seasonally adjusted.
 
@@ -798,9 +828,9 @@ ggplot(data = daily_predict_data %>% filter(!is.na(ui_claims_daily)) ) +
 
 Finally, we want to forecast the single statistic of weekly national initial claims. We do this in a very simple way, predicting the level of UI growth based on our model and the daily Google trends data, and then converting in UI claims numbers. We then sum up these predicted measures across states for each week. For the seasonally adjusted numbers, we then scale up 3/15-3/21 by 0.833, and 3/22-3/28 by 0.876.
 
-For the week of 3/15-3/21, we predicted `r round(report_output_text$predicted_ui_sa[1], digits = 2)` million UI claims, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[1], digits = 2)` million and `r round(report_output_text$predicted_ui_ub_sa[1], digits = 2)` million for the week of 3/15-3/21.
+For the week of 3/15-3/21, we predicted `r round(report_output_text$predicted_ui_sa[1], digits = 1)` million UI claims, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[1], digits = 1)` million and `r round(report_output_text$predicted_ui_ub_sa[1], digits = 1)` million for the week of 3/15-3/21.
 
-For the week of 3/22-3/28, the figure of Google Trends interest above shows that Sunday, March 22, the first day that will be included in the report, was 500 percent higher than the prior Sunday and Monday 250 percent higher than the prior Monday. Google Trends interest continues to be high throughout the week, suggesting that there is significant UI activity. Combining this information with our model implies a prediction of `r round(report_output_text$predicted_ui_sa[2], digits = 2)` million UI claims, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[2], digits = 2)` million and `r round(report_output_text$predicted_ui_ub_sa[2], digits = 2)` million for the week of 3/22-3/28. 
+For the week of 3/22-3/28, the figure of Google Trends interest above shows that Sunday, March 22, the first day that will be included in the report, was 500 percent higher than the prior Sunday and Monday 250 percent higher than the prior Monday. Google Trends interest continues to be high throughout the week, suggesting that there is significant UI activity. Combining this information with our model implies a prediction of `r round(report_output_text$predicted_ui_sa[2], digits = 1)` million UI claims, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[2], digits = 1)` million and `r round(report_output_text$predicted_ui_ub_sa[2], digits = 1)` million for the week of 3/22-3/28. 
 
 We additionally report the non-seasonally adjusted numbers below as well.
 
@@ -822,7 +852,7 @@ weekly_predict_data  %>%  ungroup() %>%
                                      week == 13 ~ predicted_ui_ub_report/0.876)) %>%
   select(week_str, ends_with("report"), ends_with("sa")) %>%
   summarize_all(sum) %>%
-  kable(digits = 2, format.args = list(big.mark = ",", scientific = FALSE),
+  kable(digits = 1, format.args = list(big.mark = ",", scientific = FALSE),
         col.names = c("Week", "Predicted UI Claims (millions)", 
                                   "Lower Bound",
                                   "Upper Bound",
@@ -840,7 +870,7 @@ Based on the advance reports from the states, we can evaluate how we did in our 
 
 ## The Week of 3/15-3/21
 
-For the week of 3/15-3/21, there are initial advance reports of UI claims at the state level that reported on March 26. We compare our predictions for that week relative to the advance numbers, and find that for many states we did quite well. However, for certain states, particularly California and New York, we were substantially over. This discrepency appears to be not a fault of the model, but rather a breakdown of the UI system in those states -- many states report being overwhelmed by applications, and these states (including CA and NY) only initially reported numbers that were officially in the system.
+For the week of 3/15-3/21, there are initial advance reports of UI claims at the state level that reported on March 26. We compare the model's predictions for that week relative to the advance numbers, and find that for many states the model did quite well. However, for certain states, particularly California and New York, it was substantially over. This discrepancy may be due to overwhelm of  UI administrative systems in those states.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 evaluation = weekly_predict_data %>% ungroup() %>% 
@@ -883,7 +913,7 @@ ggplot(data = evaluation) +
 
 ## The Week of 3/22-3/28
 
-Since we only use the week of 3/15-3/21 to estimate the model, we can also use the news reports from 3/22-3/28 to assess how well we are doing. This is our leave-out sample, and hence will give us a sense of how stable the relationship is. 
+Since we only use the week of 3/15-3/21 to estimate the model, we can also use the news reports from 3/22-3/28 to assess how well the model does. This is our leave-out sample, and hence will give us a sense of how stable the relationship is. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -917,7 +947,7 @@ b = summary(lm(data = validation_data, claims_norm ~ y_hat_norm, weight = baseli
 
 ```
 
-We do remarkably well, with an adjusted $R^{2}$ of `r round(b$adj.r.squared, digits = 2)`.
+The model does remarkably well, with an adjusted $R^{2}$ of `r round(b$adj.r.squared, digits = 1)`.
 
 <!-- ### Slopegraph over time (temporary) -->
 <!-- ```{r} -->
