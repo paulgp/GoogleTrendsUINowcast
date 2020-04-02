@@ -33,6 +33,20 @@ library(kableExtra)
 library(readxl)
 library(janitor)
 
+
+lm_eqn = function(m) {
+
+  l <- list(a = format(coef(m)[1], digits = 2),
+      b = format(abs(coef(m)[2]), digits = 2),
+      r2 = format(summary(m)$r.squared, digits = 3));
+
+
+    eq <- substitute(~~italic(R)^2~"="~r2,l)
+    eq <- substitute(~~italic(R)^2~"="~r2,l)    
+
+  as.character(as.expression(eq));                 
+}
+
 pull_data = function(loc, time_window, panel=FALSE) {
   if (panel==TRUE) {
     geo = c("US-CA",loc)
@@ -249,16 +263,28 @@ UI_Claims_March21_True <- read_excel("data/UI_20200326_states.xlsx") %>%
   mutate(location = replace_na(location, "DC")) %>%
   select(location, Advance)
 
+UI_Claims_March28_True <- read_excel("data/StateUIClaims03282020.xlsx", sheet = "Sheet1") %>%
+  left_join(tibble(STATE = state.name, location = state.abb)) %>%
+  select(location, `2 week total`, advance_0322, advance_0315, updated_0315) %>%
+  mutate(location = replace_na(location, "DC"))
+
+
+## Read in Labor force data
+
+lf_state <- read_excel("data/labor_force_state.xlsx", sheet = "Sheet1") %>%
+  left_join(tibble(state = state.name, location = state.abb)) %>%
+  mutate(location = replace_na(location, "DC")) %>%
+  select(location, labor_force = lf_022020)
 
 ### Load in "report level" data
-report_level_UI_data <- read_excel("data/report_level_UI_data.xlsx", 
+report_level_UI_data <- read_excel("data/report_level_UI_data_new.xlsx", 
                                                         sheet = "zs") %>%
   mutate(date_start = date(date_start),
          date_end = date(date_end),
          article_date = janitor::excel_numeric_to_date(as.numeric(article_date))
          )
   
-report_level_UI_data <- report_level_UI_data %>% bind_rows(read_excel("data/report_level_UI_data.xlsx", 
+report_level_UI_data <- report_level_UI_data %>% bind_rows(read_excel("data/report_level_UI_data_new.xlsx", 
                                                         sheet = "dp") %>%
   mutate(date_start = date(date_start),
          date_end = date(date_end),
@@ -497,12 +523,17 @@ We predict large variation across states and the table below describes, for each
 
 ```{r, echo = FALSE, warning=FALSE, message=FALSE}
 
-report_output %>% 
+report_output %>% left_join(UI_Claims_March28_True %>% rename(State = location)) %>% 
+  mutate(`2 week total`  = advance_0322 + updated_0315) %>%
+  select(State,
+         google_12, advance_0315, updated_0315,
+           `12`,  google_13, advance_0322,
+         `13`,   `2 week total`,  Total ) %>%
   kable(digits = 0, format.args = list(big.mark = ",", scientific = FALSE), 
-         col.names = c("State", "UI Claims From News", "Advance Official UI Claims", "Google Trends Change from 2/22-3/14",  "Predicted UI Claims", "Google Trends Change from 2/22-3/14",  "Predicted UI Claims", "Predicted UI Claims")) %>%
+         col.names = c("State",  "Google Trends Change from 2/22-3/14", "Advance Official UI Claims", "Revised Official UI Claims",  "Predicted UI Claims", "Google Trends Change from 2/22-3/14",  "Advance Official UI Claims", "Predicted UI Claims", "Revised + Advance Official UI Claims", "Predicted UI Claims")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
-  add_header_above(c(" " = 1, "Week 3/15-3/21" = 4, "Week 3/22-3/28" = 2, "Combined Weeks 3/15-3/28")) %>%
-  scroll_box(width = "800px", height = "400px")
+  add_header_above(c(" " = 1, "Week 3/15-3/21" = 4, "Week 3/22-3/28" = 3, "Combined Weeks 3/15-3/28"=2)) %>%
+  scroll_box(width = "1000px", height = "400px")
 
 weekly_predict_data %>% ungroup() %>% filter(week == 12 | week == 13) %>%
   select(location, week, predicted_ui) %>%
@@ -895,6 +926,8 @@ ggplot(data = evaluation) +
        subtitle = "Time Period:  3/15-3/21",
        color = "Prediction") +
   theme_classic(base_size=15) +
+  annotate("text", x = -Inf, y = Inf, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(`Predicted UI Claims` ~ Advance, evaluation)), parse = TRUE)+
   geom_abline(slope=1, intercept=0)
 
 ggplot(data = evaluation) +
@@ -905,6 +938,54 @@ ggplot(data = evaluation) +
        subtitle = "Time Period:  3/15-3/21",
        color = "Prediction") +
   theme_classic(base_size=15) +
+    annotate("text", x = 3, y = 300, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(log(`Predicted UI Claims`) ~ log(Advance), evaluation)), parse = TRUE)+
+  scale_y_log10() +
+  scale_x_log10() +
+  geom_abline(slope=1, intercept=0)
+
+
+
+```
+
+We can also look at the *revised* numbers reported on April 2nd and see how we do relative to those:
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+evaluation = weekly_predict_data %>% ungroup() %>% 
+  filter(week == 12) %>%
+  select(-week) %>%
+  left_join(UI_Claims_March28_True) %>%
+  select(`State` = location,
+         Advance = updated_0315,
+         `Predicted UI Claims` = predicted_ui_report, 
+         `Lower Bound`=predicted_ui_lb,
+         `Upper Bound`=predicted_ui_ub) %>% 
+  left_join(output2)  %>%
+  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
+  labs(x = "Updated Official Estimates (thousands)",
+       y = "Predicted Estimate of UI Claim (thousands)",
+       title = "Comparing Model Predictions to Updated Estimates",
+       subtitle = "Time Period:  3/15-3/21, reported 4/2",
+       color = "Prediction") +
+  theme_classic(base_size=15) +
+    annotate("text", x = -Inf, y = Inf, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(`Predicted UI Claims` ~ Advance, evaluation)), parse = TRUE)+
+  geom_abline(slope=1, intercept=0)
+
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State))  +
+  labs(x = "Updated Official Estimates (thousands)",
+       y = "Predicted Estimate of UI Claim (thousands)",
+       title = "Comparing Model Predictions to Updated Estimates",
+       subtitle = "Time Period:  3/15-3/21, reported 4/2",
+       color = "Prediction") +
+  theme_classic(base_size=15) +
+    annotate("text", x = 3, y = 300, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(log(`Predicted UI Claims`) ~ log(Advance), evaluation)), parse = TRUE)+
   scale_y_log10() +
   scale_x_log10() +
   geom_abline(slope=1, intercept=0)
@@ -940,6 +1021,8 @@ ggplot(data = validation_data) +
        subtitle = "Time Period:  3/22-3/28",
        color = "Num. days in report") +
   theme_classic(base_size=15) +
+    annotate("text", x = -Inf, y = Inf, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(`Predicted UI Claims` ~ Advance, evaluation)), parse = TRUE)+
   # scale_y_log10() +
   # scale_x_log10() +
   geom_abline(slope=1, intercept=0)
@@ -948,8 +1031,169 @@ a = summary(lm(data = validation_data, claims_norm ~ y_hat_norm),  robust=TRUE)
 b = summary(lm(data = validation_data, claims_norm ~ y_hat_norm, weight = baseline_ui), robust=TRUE)
 
 ```
-
 The model does remarkably well, with an adjusted $R^{2}$ of `r round(b$adj.r.squared, digits = 1)`.
+
+
+The model does remarkably well, with an adjusted $R^{2}$ of `r round(b$adj.r.squared, digits = 4)`.
+
+We can now also check how we did by comparing to advance estimates:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+evaluation = weekly_predict_data %>% ungroup() %>% 
+  filter(week == 13) %>%
+  select(-week) %>%
+  left_join(UI_Claims_March28_True) %>%
+  select(`State` = location,
+         Advance = advance_0322,
+         `Predicted UI Claims` = predicted_ui_report, 
+         `Lower Bound`=predicted_ui_lb,
+         `Upper Bound`=predicted_ui_ub) %>% 
+  left_join(output2)  %>%
+  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+
+
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
+  labs(x = "Advance Official Estimates (thousands)",
+       y = "Predicted Estimate of UI Claim (thousands)",
+       title = "Comparing Model Predictions to Advance Estimates",
+       subtitle = "Time Period:  3/22-3/28",
+       color = "Prediction") +
+  theme_classic(base_size=15) +
+    annotate("text", x = -Inf, y = Inf, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(`Predicted UI Claims` ~ Advance, evaluation)), parse = TRUE)+
+  geom_abline(slope=1, intercept=0)
+
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State))  +
+  labs(x = "Advance Official Estimates (thousands)",
+       y = "Predicted Estimate of UI Claim (thousands)",
+       title = "Comparing Model Predictions to Advance Estimates",
+       subtitle = "Time Period:  3/22-3/28",
+       color = "Prediction") +
+  theme_classic(base_size=15) +
+    annotate("text", x = 3, y = 500, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(log(`Predicted UI Claims`) ~ log(Advance), evaluation)), parse = TRUE)+
+  scale_y_log10() +
+  scale_x_log10() +
+  geom_abline(slope=1, intercept=0)
+
+
+
+```
+
+
+## Combining the two weeks
+
+Finally, to avoid the congestion concerns, we can consider how we did at predicting the sum of the advance estimates, i.e. the total of the two sets of advance estimates between 3/15-3/28.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+evaluation = weekly_predict_data %>% group_by(location) %>% 
+  summarize(predicted_ui_report = sum(predicted_ui_report)) %>%
+  left_join(UI_Claims_March28_True) %>%
+  left_join(lf_state) %>%
+  mutate(advance_sum = (advance_0322 + advance_0315)) %>%
+  select(`State` = location,
+         Advance = advance_sum,
+         `Predicted UI Claims` = predicted_ui_report) %>% 
+  left_join(output2)  %>%
+  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+
+model_graph = summary(lm(data = evaluation, Advance ~ `Predicted UI Claims`))
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
+  labs(x = "Advance Official Estimates (thousands)",
+       y = "Predicted Estimate of UI Claim s(thousands)",
+       title = "Comparing Model Predictions to Advance Estimates",
+       subtitle = "Time Period:  3/15-3/28",
+       color = "Prediction") +
+    annotate("text", x = -Inf, y = Inf, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(`Predicted UI Claims` ~ Advance, evaluation)), parse = TRUE)+
+  theme_classic(base_size=15) +
+  geom_abline(slope=1, intercept=0)
+
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State))  +
+  labs(x = "Advance Official Estimates (thousands)",
+       y = "Predicted Estimate of UI Claim (thousands)",
+       title = "Comparing Model Predictions to Advance Estimates",
+       subtitle = "Time Period:  3/15-3/28",
+       color = "Prediction") +
+  annotate("text", x = 10, y = 1000, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(log(`Predicted UI Claims`) ~ log(Advance), evaluation)), parse = TRUE)+
+  theme_classic(base_size=15) +
+  scale_y_log10() +
+  scale_x_log10() +
+  geom_abline(slope=1, intercept=0)
+
+```
+
+and scaled by labor force as of February 2020:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+evaluation = weekly_predict_data %>% group_by(location) %>% 
+  summarize(predicted_ui_report = sum(predicted_ui_report)) %>%
+  left_join(UI_Claims_March28_True) %>%
+  left_join(lf_state) %>%
+  mutate(advance_sum = (advance_0322 + advance_0315)/labor_force,
+         predicted_ui_report = predicted_ui_report/labor_force) %>%
+  select(`State` = location,
+         Advance = advance_sum,
+         `Predicted UI Claims` = predicted_ui_report, labor_force) %>% 
+  left_join(output2)  %>%
+  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`, labor_force) 
+
+model_graph = summary(lm(data = evaluation, Advance ~ `Predicted UI Claims`))
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance, y = `Predicted UI Claims`, label=State)) +
+  labs(x = "UI Claims as share of Feb 2020 Labor Force",
+       y = "Predicted Estimate as share of Feb 2020 Labor Force",
+       title = "Comparing Model Predictions to Advance Estimates",
+       subtitle = "Time Period:  3/15-3/28",
+       color = "Prediction") +
+  annotate("text", x = -Inf, y = Inf, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(`Predicted UI Claims` ~ Advance, evaluation, weight=labor_force)), parse = TRUE)+
+  theme_classic(base_size=15) +
+  geom_abline(slope=1, intercept=0)
+
+```
+
+
+As a check, comparing to the advance + revised:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+evaluation = weekly_predict_data %>% group_by(location) %>% 
+  summarize(predicted_ui_report = sum(predicted_ui_report)) %>%
+  left_join(UI_Claims_March28_True) %>%
+  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
+  labs(x = "Advance + Revised Official Estimates (thousands)",
+       y = "Predicted Estimate of UI Claim s(thousands)",
+       title = "Comparing Model Predictions to Advance + Revised Estimates",
+       subtitle = "Time Period:  3/15-3/28",
+       color = "Prediction") +
+    annotate("text", x = -Inf, y = Inf, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(`Predicted UI Claims` ~ Advance, evaluation)), parse = TRUE)+
+  theme_classic(base_size=15) +
+  geom_abline(slope=1, intercept=0)
+
+ggplot(data = evaluation) +
+  geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State))  +
+  labs(x = "Advance Official Estimates (thousands)",
+       y = "Predicted Estimate of UI Claim (thousands)",
+       title = "Comparing Model Predictions to Advance Estimates",
+       subtitle = "Time Period:  3/15-3/28",
+       color = "Prediction") +
+  theme_classic(base_size=15) +
+    annotate("text", x = 10, y = 1000, hjust = 0, vjust = 1,
+           label = lm_eqn(lm(log(`Predicted UI Claims`) ~ log(Advance), evaluation)), parse = TRUE)+
+  scale_y_log10() +
+  scale_x_log10() +
+  geom_abline(slope=1, intercept=0)
+
+```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -1026,97 +1270,3 @@ policy_event_study <- left_join(data_states_short_combined, data_policy_states2,
 
 
 ```
-
-
-
-
-
-
-<!-- ### Slopegraph over time (temporary) -->
-<!-- ```{r} -->
-<!-- MySpecial <- list(   -->
-<!--   # move the x axis labels up top -->
-<!--   theme_bw(), -->
-<!--   # Format tweaks -->
-<!--   # Remove the legend -->
-<!--   theme(legend.position = "none"), -->
-<!--   # Remove the panel border -->
-<!--   theme(panel.border     = element_blank()), -->
-<!--   # Remove just about everything from the y axis -->
-<!--   theme(axis.title.y     = element_blank()), -->
-<!--   theme(axis.text.y      = element_blank()), -->
-<!--     theme(axis.text.y      = element_text(text(size=14))), -->
-<!--   theme(panel.grid.major.y = element_blank()), -->
-<!--   theme(panel.grid.minor.y = element_blank()), -->
-<!--   # Remove a few things from the x axis and increase font size -->
-<!--   theme(panel.grid.major.x = element_blank()), -->
-<!--   # Remove x & y tick marks -->
-<!--   theme(axis.ticks.y       = element_blank()), -->
-<!--   # Format title & subtitle -->
-<!--   theme(plot.title       = element_text(size=14, face = "bold", hjust = 0.5)), -->
-<!--   theme(plot.subtitle    = element_text(hjust = 0.5)), -->
-<!--   theme(strip.background = element_blank()), -->
-<!-- #   #strip.text.x = element_blank() -->
-<!--   theme(strip.text = element_text(size=10)) -->
-<!-- ) -->
-<!-- regions <- read_excel("data/regions.xlsx") -->
-<!-- plt_data = weekly_predict_data %>% bind_rows(UI_Claims_March21 %>% select(location, predicted_ui =  baseline_ui) %>% mutate(week = 11))  %>% left_join(regions) %>% mutate(predicted_ui = round(predicted_ui / 1000,digits=1)) -->
-<!-- ggplot(data = plt_data, aes(x = week, y = predicted_ui, group = location))  + -->
-<!--   geom_line(aes(color = location, alpha = 1), size = 1) +  -->
-<!--   geom_text_repel(data = plt_data %>% filter(week == 11),  -->
-<!--                   aes(label = location) ,  -->
-<!--                   hjust = "left",  -->
-<!--                   fontface = "bold",  -->
-<!--                   size = 3,  -->
-<!--                   nudge_x = -40,  -->
-<!--                   direction = "y") + -->
-<!--     geom_text_repel(data = plt_data %>% filter(week == 13),  -->
-<!--                   aes(label = location) ,  -->
-<!--                   hjust = "right",  -->
-<!--                   fontface = "bold",  -->
-<!--                   size = 3,  -->
-<!--                   nudge_x = 40,  -->
-<!--                   direction = "y") + -->
-<!--     geom_label(aes(label = predicted_ui),  -->
-<!--              size = 2.5,  -->
-<!--              label.padding = unit(0.05, "lines"),  -->
-<!--              label.size = 0.0) + -->
-<!--   facet_wrap(~bigregion, nrow=4)  +  -->
-<!--   scale_x_continuous(breaks = c(11,12,13), -->
-<!--                      labels = c("2/22-3/14" = 11,  -->
-<!--                               "3/15-3/21" = 12,  -->
-<!--                               "3/22-3/28" = 13)) + -->
-<!--   MySpecial + -->
-<!--   scale_y_log10() -->
-
-<!-- plt_data_subset = plt_data %>% inner_join(UI_Claims_March21 %>% arrange(baseline_ui) %>% filter(row_number() > 2*n()/3)) -->
-<!-- ggplot(data = plt_data_subset, aes(x = week, y = predicted_ui, group = location))  + -->
-<!--   geom_line(aes(color = location, alpha = 1), size = 1) +  -->
-<!--   geom_text_repel(data = plt_data_subset %>% filter(week == 11),  -->
-<!--                   aes(label = location) ,  -->
-<!--                   hjust = "left",  -->
-<!--                   fontface = "bold",  -->
-<!--                   size = 3,  -->
-<!--                   nudge_x = -40,  -->
-<!--                   direction = "y") + -->
-<!--     geom_text_repel(data = plt_data_subset %>% filter(week == 13),  -->
-<!--                   aes(label = location) ,  -->
-<!--                   hjust = "right",  -->
-<!--                   fontface = "bold",  -->
-<!--                   size = 3,  -->
-<!--                   nudge_x = 40,  -->
-<!--                   direction = "y") + -->
-<!--     geom_label(aes(label = predicted_ui),  -->
-<!--              size = 2.5,  -->
-<!--              label.padding = unit(0.05, "lines"),  -->
-<!--              label.size = 0.0) + -->
-<!--   scale_x_continuous(breaks = c(11,12,13), -->
-<!--                      labels = c("2/22-3/14",  -->
-<!--                               "3/15-3/21",  -->
-<!--                               "3/22-3/28")) + -->
-<!--   MySpecial  -->
-
-
-<!-- ``` -->
-
-
