@@ -30,6 +30,8 @@ library(lubridate)
 library(zoo)
 library(knitr)
 library(kableExtra)
+library(readxl)
+library(janitor)
 
 
 lm_eqn = function(m) {
@@ -1029,6 +1031,8 @@ a = summary(lm(data = validation_data, claims_norm ~ y_hat_norm),  robust=TRUE)
 b = summary(lm(data = validation_data, claims_norm ~ y_hat_norm, weight = baseline_ui), robust=TRUE)
 
 ```
+The model does remarkably well, with an adjusted $R^{2}$ of `r round(b$adj.r.squared, digits = 1)`.
+
 
 The model does remarkably well, with an adjusted $R^{2}$ of `r round(b$adj.r.squared, digits = 4)`.
 
@@ -1046,6 +1050,7 @@ evaluation = weekly_predict_data %>% ungroup() %>%
          `Upper Bound`=predicted_ui_ub) %>% 
   left_join(output2)  %>%
   select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+
 
 ggplot(data = evaluation) +
   geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
@@ -1160,11 +1165,6 @@ As a check, comparing to the advance + revised:
 evaluation = weekly_predict_data %>% group_by(location) %>% 
   summarize(predicted_ui_report = sum(predicted_ui_report)) %>%
   left_join(UI_Claims_March28_True) %>%
-  mutate(advance_sum = advance_0322 + updated_0315) %>%
-  select(`State` = location,
-         Advance = advance_sum,
-         `Predicted UI Claims` = predicted_ui_report) %>% 
-  left_join(output2)  %>%
   select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
 
 ggplot(data = evaluation) +
@@ -1192,5 +1192,81 @@ ggplot(data = evaluation) +
   scale_y_log10() +
   scale_x_log10() +
   geom_abline(slope=1, intercept=0)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+#Liz doing state policy stuff 
+
+data_policy_states = read_xlsx("data/covid_closures_by_state.xlsx") 
+
+data_policy_states <- mutate_at(data_policy_states, c("partial", "school", "complete"), funs(ymd)) %>%
+  mutate(complete_week = epiweek(complete), partial_week = epiweek(partial), school_week = epiweek(school)) %>%
+  mutate(complete_day = day(complete), partial_day = day(partial), school_day = day(school)) %>%
+  mutate(region = tolower(state))
+
+states <- map_data("state")
+
+dates_map <- left_join(states, data_policy_states, by = "region")
+
+#Map of complete closure orders
+
+dates_map$complete <- format(dates_map$complete, format = "%m/%d")
+complete_map <- 
+  ggplot(dates_map, aes(long, lat, group = group)) + 
+  geom_polygon(aes(fill = factor(complete)), color = "white") + 
+  ggtitle("Non-Essential Business Closure Orders") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(13, "GnBu"))(13), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank(),
+        axis.title.y=element_blank(), 
+        axis.title.x=element_blank()) 
+
+#Map of partial closure orders
+
+dates_map$partial <- format(dates_map$partial, format = "%m/%d")
+takeout_map <- 
+  ggplot(dates_map, aes(long, lat, group = group)) + 
+  geom_polygon(aes(fill = factor(partial)), color = "white") + 
+  ggtitle("Prohibition on Dining In and Partial Closure Orders") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(13, "BuPu"))(13), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank(),
+        axis.title.y=element_blank(), 
+        axis.title.x=element_blank()) 
+
+```
+
+# State Policy Actions
+
+In recent weeks, Governors across the US have issued executive orders requiring that businesses change or limit their in-person operations. In most states, restaurants are only permitted to operate take-out and/or delivery services. While some restaurants have opted to stay open and attempt to weather the storm with reduced operations, others have shut down entirely. This has resulted in mass layoffs in the food service industry across the country, contributing to the skyrocketing UI claims numbers. 
+
+Further, in some states, Governors have called for all non-essential businesses to close. Many shops and malls, theaters and museums, gyms and yoga studios, and concert halls and clubs have been ordered to cease operations. While some businesses can scale up their e-commerce operations or survive on take-out orders alone, many are forced to lay off their workers. 
+
+The timing of states' closure orders have varied, so we've put together some maps to show the timin
+
+##Orders Affecting Business Operations and Closures
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+complete_map
+takeout_map
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+data_policy_states2 <- data_policy_states
+  names(data_policy_states2)[names(data_policy_states2)=="state_abbr"] <- "location" 
+  subset(data_policy_states2, select = -c(notes, region))
+
+policy_event_study <- left_join(data_states_short_combined, data_policy_states2, by = "location") 
+
 
 ```
