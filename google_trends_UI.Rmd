@@ -996,9 +996,6 @@ takeout_map <-
         axis.title.y=element_blank(), 
         axis.title.x=element_blank()) 
 
-complete_map
-
-
 ```
 
 
@@ -1012,11 +1009,24 @@ The timing of states' closure orders have varied, so we've put together some map
 
 ##Orders Affecting Business Operations and Closures
 
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 complete_map
 takeout_map
+```
 
 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+data_policy_states2 <- data_policy_states
+  names(data_policy_states2)[names(data_policy_states2)=="state_abbr"] <- "location" 
+  subset(data_policy_states2, select = -c(notes, region))
+
+policy_event_study <- left_join(data_states_short_combined, data_policy_states2, by = "location") 
+
+
+```
 
 
 
