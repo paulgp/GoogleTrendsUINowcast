@@ -81,14 +81,14 @@ pull_data = function(loc, time_window, panel=FALSE) {
 # 
 # # Loop multiple times and average, following Seth's paper
 # data_full = tibble()
-# for (j in seq(1,1)) {
+# for (j in seq(1,3)) {
 # panel_data = list()
 # for (i in seq(1,length(location_vec$location),4)) {
 #   if (i < 49) {
-#     panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+3)], time_window="2020-2-01 2020-3-28", panel=TRUE)
+#     panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+3)], time_window="2020-2-01 2020-4-02", panel=TRUE)
 #   }
 #   else {
-#      panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+2)], time_window="2020-2-01 2020-3-28", panel=TRUE)
+#      panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+2)], time_window="2020-2-01 2020-4-02", panel=TRUE)
 #   }
 #     # be polite
 #     Sys.sleep(.2)
@@ -109,15 +109,15 @@ pull_data = function(loc, time_window, panel=FALSE) {
 #   arrange(location, date)
 # 
 # data_full = data_full %>% bind_rows(data_states_short)
-# #Sys.sleep(60)
+# Sys.sleep(10)
 # }
-# # 
+# #
 # data_states_short = data_full %>% group_by(location, date) %>% summarize(hits = mean(hits))
 # ## We do this b/c otherwise Google Trends API shuts us off  (already blocked for today)
-# data_states_short %>% write_csv("data/data_states_2020_02_01_2020_03_30d.csv")
-# 
+# data_states_short %>% write_csv("data/data_states_2020_02_01_2020_03_31e.csv")
+#
 
-data_states_short = read_csv("data/data_states_2020_02_01_2020_03_30d.csv") 
+data_states_short = read_csv("data/data_states_2020_02_01_2020_03_31e.csv") 
 data_states_short_recent =  read_csv("data/trends_Mar30_2pm.csv", skip = 2) %>% 
   mutate(date = date(Time)) %>%  
   gather(state_dirty, val, -date, -Time) %>%
@@ -137,7 +137,7 @@ data_states_short_recent =  read_csv("data/trends_Mar30_2pm.csv", skip = 2) %>%
 ```
 
 ```{r load-ntl-data, include=FALSE, cache=TRUE}
-national_trend =  pull_data(loc = c("US"), time_window="2020-2-01 2020-3-30", panel=TRUE)
+national_trend =  pull_data(loc = c("US"), time_window="2020-2-01 2020-4-02", panel=TRUE)
 national_trend = national_trend$state_data %>% filter(geo == "US")  %>% 
   mutate(location = "USA") %>%
   ungroup() %>%
@@ -192,10 +192,11 @@ weekly_data3 = data_states_short %>% bind_rows(national_trend) %>%
   summarize(hits = mean(hits, na.rm= TRUE), date = max(date)) %>% filter(month(date) > 1)
 
 growth_rate_weekly = weekly_data %>% 
-   filter(week >= 8 & week < 14 ) %>%
+   filter(week >= 8 & week < 15 ) %>%
   select(location, hits = hits, week, date, dow) %>%
   mutate(late = case_when(week == 12 ~ "late",
                           week == 13 ~ "late_nyt",
+                          week == 14 ~ "late_next",
                           TRUE ~ "early")) %>%
   group_by(location, late, dow) %>%
   summarize(hits = mean(hits, na.rm=TRUE)) %>%
@@ -215,10 +216,11 @@ growth_rate_weekly2 = weekly_data2 %>% group_by(location) %>%
          diff = late - early)
 
 growth_rate_weekly3 = weekly_data3 %>% 
-   filter(week >= 8 & week < 14 ) %>%
+   filter(week >= 8 & week < 15 ) %>%
   select(location, hits = hits, week, date) %>%
   mutate(late = case_when(week == 12 ~ "late",
                           week == 13 ~ "late_nyt",
+                          week == 14 ~ "late_next",
                           TRUE ~ "early")) %>%
   group_by(location, late) %>%
   summarize(hits = mean(hits, na.rm=TRUE)) %>%
@@ -316,29 +318,14 @@ report_UI_GT_data = report_level_UI_data_fill %>%
 
 model_report_daily = lm(ui_norm ~ hits_norm, data =  report_UI_GT_data %>% 
          filter(epiweek(week_end) == 12), weight = baseline_ui)
-
+model_report_daily_unweighted = lm(ui_norm ~ hits_norm, data =  report_UI_GT_data %>% 
+         filter(epiweek(week_end) == 12))
 ```
 
 ```{r, include=FALSE, message=FALSE, warning=FALSE}
 
-daily_plot_data = daily_UI_Claims %>% 
-  left_join(data_states_short) %>%
-  left_join(UI_Claims_March28 %>% select(baseline_ui, location) %>% 
-              group_by(location) %>% filter(row_number() == n())) %>%
-  mutate(dow = wday(date)) %>%
-  left_join(growth_rate_weekly %>% select(location, dow, early)) %>%
-  group_by(location) %>% mutate(hits_first = first(hits),
-                                ui_first = first(ui_claims_daily)) %>%
-  mutate(ui_norm = ui_claims_daily/baseline_ui,
-         ui_index = ui_claims_daily/ui_first,
-         hits_norm = (hits - early),
-         hits_index = hits/(hits_first+1))
-
-model_daily = lm(ui_norm ~ hits_norm, data =  daily_plot_data %>% 
-         filter(epiweek(date) == 12), weight = baseline_ui)
-
 daily_predict_data = data_states_short %>% 
-  filter(epiweek(date) > 11 & epiweek(date) < 14) %>%
+  filter(epiweek(date) > 11 & epiweek(date) < 15) %>%
   mutate(dow = wday(date)) %>%
   left_join(growth_rate_weekly %>% 
               select(location, early, dow)) %>%
@@ -347,16 +334,11 @@ daily_predict_data = data_states_short %>%
               group_by(location) %>% 
               filter(row_number() == n())) %>%
   mutate(hits_norm = hits - early) %>%
-  mutate(ui_claims_daily_hat = 
-           baseline_ui*(
-             ((hits_norm) * model_daily$coefficients[2]) + 
-               model_daily$coefficients[1]),
-         ui_claims_report_daily_hat = 
+  mutate(ui_claims_report_daily_hat = 
            baseline_ui*(
              ((hits_norm) * model_report_daily$coefficients[2]) + 
                model_report_daily$coefficients[1])
-         ) %>%
-  left_join(daily_plot_data %>% select(location, date, ui_claims_daily, hits_norm)) 
+         ) 
 
 
 ```
@@ -364,36 +346,31 @@ daily_predict_data = data_states_short %>%
 
 
 ```{r, include=FALSE, message=FALSE, warning=FALSE}
-se.fit = predict(model_daily, daily_predict_data %>% 
-  mutate(week = epiweek(date)), se.fit = TRUE)$se.fit
 se_report.fit = predict(model_report_daily, daily_predict_data %>% 
   mutate(week = epiweek(date)), se.fit = TRUE)$se.fit
 
 weekly_predict_data = daily_predict_data %>% 
   mutate(week = epiweek(date))  %>%
-  bind_cols(tibble(se = se.fit, se_report = se_report.fit)) %>%
-  mutate(se = se * baseline_ui,
-         se_report = se_report * baseline_ui) %>%
-  left_join(report_level_UI_data_fill %>% group_by(location, date) %>% summarize(claims_avg = mean(claims_avg, na.rm = TRUE))) %>%
-  mutate(combined_prediction = case_when(TRUE ~ ui_claims_daily_hat),
-         combined_prediction_se = case_when(TRUE ~ se,
-                                            #is.na(ui_claims_daily) ~ se,
-                                         #TRUE ~ 0
-                                         ),
-         combined_prediction_report =  ui_claims_report_daily_hat,
+  bind_cols(tibble(se_report = se_report.fit)) %>%
+  mutate(se_report = se_report * baseline_ui) %>%
+  left_join(report_level_UI_data_fill %>% 
+              group_by(location, date) %>% 
+              summarize(claims_avg = mean(claims_avg, na.rm = TRUE))) %>%
+  mutate(combined_prediction_report =  ui_claims_report_daily_hat,
          combined_prediction_se_report = se_report) %>%
-  select(location, date, hits, hits_norm, ui_claims_daily_hat, ui_claims_daily, 
-         combined_prediction, combined_prediction_se, 
+  select(location, date, hits, hits_norm,
          combined_prediction_report, combined_prediction_se_report, week) %>%
   group_by(location, week) %>%
-  summarize(predicted_ui = sum(combined_prediction),
-            predicted_ui_lb =  sum(combined_prediction) - 2*sum(combined_prediction_se),
-            predicted_ui_ub =  sum(combined_prediction) + 2*sum(combined_prediction_se),
-            predicted_ui_report = sum(combined_prediction_report),
+  summarize(predicted_ui_report = sum(combined_prediction_report),
             predicted_ui_lb_report =  sum(combined_prediction_report) - 2*sum(combined_prediction_se_report),
             predicted_ui_ub_report =  sum(combined_prediction_report) + 2*sum(combined_prediction_se_report),
             first_date = first(date),
-            last_date = last(date))  
+            last_date = last(date))%>%
+  mutate(num_days = 1 + as.numeric((last_date- first_date)),
+         predicted_ui_report = predicted_ui_report*(7/num_days),
+         predicted_ui_lb_report = predicted_ui_lb_report*(7/num_days),
+         predicted_ui_ub_report = predicted_ui_ub_report*(7/num_days))
+         
 
 
 
@@ -403,47 +380,21 @@ weekly_predict_data = daily_predict_data %>%
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 
-joined_data = growth_rate_weekly2  %>% left_join(UI_Claims_March21)  %>% filter(!is.na(rate)) %>%
-  mutate(ui_growth = as.numeric(ui_growth),
-         projected_init_claims_aaron = ui_growth*baseline_ui)
-
-model_fit_diff = lm(ui_growth ~ diff, data = joined_data, na.action= na.exclude)
-model_fit_diff_weighted = lm(ui_growth ~ diff, data = joined_data, 
-                             na.action= na.exclude, weight = baseline_ui)
-
-fitted_data = joined_data %>% 
-  ungroup() %>%
-  mutate(fitted = is.na(ui_growth),
-         pred = model_fit_diff$coefficients[1] + model_fit_diff$coefficients[2]*diff,
-         projected_init_claims = pred*baseline_ui,
-         pred_weight = model_fit_diff_weighted$coefficients[1]+model_fit_diff_weighted$coefficients[2]*diff,
-         projected_init_claims_weight = pred_weight*baseline_ui
-  ) %>%
-  ungroup() %>% 
-  mutate(combined_projection = case_when(fitted == TRUE ~ projected_init_claims,
-                                         TRUE ~ projected_init_claims_aaron
-                                         ),
-         combined_growth = case_when(fitted = TRUE ~ pred,
-                                     TRUE ~ ui_growth),
-         combined_projection_weight = case_when(fitted == TRUE ~ projected_init_claims_weight,
-                                         TRUE ~ projected_init_claims_aaron
-                                         ))
-options(knitr.kable.NA = "--")
-output2 = fitted_data %>% select(`State` = location, `UI Claims From News` = projected_init_claims_aaron, 
-                       `Google Trends Change` = diff,
-                       `Forecasted UI Claims` = combined_projection ) 
 
 report_output_text = weekly_predict_data %>% 
-  ungroup() %>% filter(week == 12 | week == 13) %>%
+  ungroup() %>% filter(week  > 11) %>%
   mutate(predicted_ui = predicted_ui_report/1e6, 
          predicted_ui_lb = predicted_ui_lb_report/1e6,
          predicted_ui_ub = predicted_ui_ub_report/1e6) %>%
   mutate(predicted_ui_sa = case_when(week == 12 ~ predicted_ui/0.833,
-                                     week == 13 ~ predicted_ui/0.876),
+                                     week == 13 ~ predicted_ui/0.876,
+                                     week == 14 ~ predicted_ui*1.065),
          predicted_ui_lb_sa = case_when(week == 12 ~ predicted_ui_lb/0.833,
-                                     week == 13 ~ predicted_ui_lb/0.876),
+                                     week == 13 ~ predicted_ui_lb/0.876,
+                                     week == 14 ~ predicted_ui_lb*1.065),
          predicted_ui_ub_sa = case_when(week == 12 ~ predicted_ui_ub/0.833,
-                                     week == 13 ~ predicted_ui_ub/0.876)) %>%
+                                     week == 13 ~ predicted_ui_ub/0.876,
+                                     week == 14 ~ predicted_ui_ub*1.065)) %>%
   select(week, predicted_ui, predicted_ui_lb, predicted_ui_ub,
          ends_with("sa")) %>%
   group_by(week) %>% summarize_all(sum) 
@@ -456,30 +407,37 @@ report_output = weekly_predict_data %>% ungroup() %>% filter(week == 12 | week =
   left_join(UI_Claims_March21_True) %>%
   left_join(growth_rate_weekly3) %>%
   rename(State = location) %>%
-  left_join(output2) %>%
   mutate(google_12 = late - early,
          google_13 = late_nyt - early) %>%
-  select(State, `UI Claims From News`, Advance, google_12, `12`,  google_13, `13`) %>% 
+  select(State,  Advance, google_12, `12`,  google_13, `13`) %>% 
   mutate(Total = `12` + `13`)
 ```
 
 
-*Note: Data+code for this are available here  https://docs.google.com/spreadsheets/d/1RN1XJLIpU12QUwMpkF0DNiV8fkeqdHbWHta2sRfEZT4/edit#gid=651560 and here https://github.com/paulgp/GoogleTrendsUINowcast *
+Many thanks to Dylan Piatt and Zach Swaziek for their help with this. Feedback always welcome at asojourn@umn.edu.
 
-**Many thanks to Dylan Piatt and Zach Swaziek for their help with this**
 
-# Goal
+Data+code are available here: https://docs.google.com/spreadsheets/d/1RN1XJLIpU12QUwMpkF0DNiV8fkeqdHbWHta2sRfEZT4/edit#gid=651560 and https://github.com/paulgp/GoogleTrendsUINowcast
 
-Understanding changes in national and state-level initial unemployment insurance (UI) claims has value to markets, policymakers, and economists. Initial claims measure the number of Americans filing new claims for UI benefits is one of the most-sensitive, high-frequency official statistics used to detect changes in the labor market. However, official federal data on UI claims comes out at a weekly interval and at a lag. The U.S. Department of Labor aggregates reports state unemployment insurance systems for weekly release of advance estimates on Thursdays, which covers the prior Sunday to Saturday week. They revise it over the following week, so official estimates are released 12 days after each week ends. We aim to forecast official UI initial claims statistics. 
+### Latest Results
+  * We validate the model out-of-sample against official data released today. A model estimated only on outcome data prior to this week explains TBA share of variance in states’ reports for the week ending March 28.
+  * Extrapolating Google Trends data from 3/29-3/31 forward to the end of the week, we project `r round(report_output_text$predicted_ui_sa[3], digits = 1)` million UI claims, seasonally adjusted, with confidence intervals of `r round(report_output_text$predicted_ui_lb_sa[3], digits = 1)` and `r round(report_output_text$predicted_ui_ub_sa[3], digits = 1)` million.
 
-Below, we forecast initial claims nationally and by state for the week ending Saturday, March 28. The official, advance estimates will be released Thursday, April 2. While last week was a record-setting week, this week's UI numbers look poised to break that record again, with the largest rise in new unemployment claims in U.S. history, due to widespread quarantines. But just how large will this shock be?
 
-Many state agencies reported partial information to the press over the course of the week, due the staggering growth in UI claims. The first part of our approach gathers and harmonizes the reported numbers across press reports to construct news report measures of UI claims in a state over a set of days. The Data section provides more details.
-<!-- In many cases, this involves extrapolating to a weekly number based on a few days of reported information. Taking the ratio of this to the average number of initial claims over the four, prior weeks measures change in initial claims for the subset of states with any reports this week. -->
+# Abstract
 
-The second part of our approach imputes state's UI claims harnessing data from Google Trends. We construct a daily panel dataset of the intensity of search for the term "file for unemployment" for each state. We regress this measure on the set of day-states where we have constructed a growth rate in UI claims using news reports, and use this to impute the initial claims for all states. We do this by forecasting UI claims using the estimated daily model and the panel of Google trends data.
+Understanding changes in national and state-level initial unemployment insurance (UI) claims has value to markets, policymakers, and economists. Initial claims measure the number of Americans filing new claims for UI benefits is one of the most-sensitive, high-frequency official statistics used to detect changes in the labor market. However, official federal data on UI claims comes out at a weekly interval and at a lag. While last week was a record-setting week, this week’s UI numbers doubled that record, with the largest rise in new unemployment claims in U.S. history, due to widespread quarantines. In advance of each week’s release, we constructed harmonized news-based measures of UI claims in a state over various sets of consecutive days. We also build a daily panel on the intensity of search interest for the term “file for unemployment” for each state on Google Trends. Changes in search intensity predict changes in initial claims. We forecast state and national UI claims using the estimated daily model. These models are new and partially validated.
 
-These models are new and only partially validated.  We always welcome feedback (asojourn@umn.edu).
+# Introduction
+
+Understanding changes in national and state-level initial unemployment insurance (UI) claims can have value to markets, policymakers, economists, journalists, and the public, especially in times of rapid change. Initial claims measure the number of Americans filing new claims for UI benefits is one of the most-sensitive, high-frequency official statistics used to detect changes in the labor market. However, official federal data on initial claims come out at a weekly interval and at a lag. The U.S. Department of Labor aggregates reports from state unemployment-insurance systems for weekly release of advance estimates on each Thursday, which covers the prior Sunday to Saturday week. They revise these estimates over the following week, so official estimates are released 18 days after each week starts and 12 days after it ends. Statistics on unemployment, employment to population ratios, and labor force participation come out monthly, usually two to three weeks after the reference period ends. To facilitate a more-current view of changes in the labor market, we aim to forecast official UI initial claims statistics.
+
+Below, we describe a model we used to forecast initial claims nationally and by state for the week ending Saturday, March 28. The first (advance), official estimates was released this morning (4/2/2020). Last Thursday’s report of 3.3 million new claims in the week ending March 21 devastated the prior record since records started in 1967, due to widespread quarantines to try to flatten the curve of COVID-19 critical cases. This week’s estimate broke that record again with 6.6 million new claims filed. 
+
+Some state agencies reported partial information on new claims to the press, due the staggering growth in UI claims. The first part of our approach gathers and harmonizes the reported numbers across press reports to construct news report measures of UI claims in a state over various sets of consecutive days. The Data section provides more details.
+
+The second part of our approach imputes states’ UI claims harnessing data from Google Trends. We construct a daily panel dataset of the intensity of search for the term “file for unemployment” for each state. We regress this measure on the set of day-states where we have constructed a growth rate in UI claims using news reports, and use this to forecast initial claims for all states based on the estimated daily model and the panel of Google trends data.
+
 
 # Summary of Results
 
@@ -487,76 +445,38 @@ For the week ending March 21, the model yields initial national UI claims (seaso
 
 For the week of 3/22-3/28, we use the estimated relationship from 3/15-3/21 between Google Trends interest and UI claims to predict initial claims. Our model implies a prediction of `r round(report_output_text$predicted_ui_sa[2], digits = 1)` million UI claims, seasonally adjusted, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[2], digits = 1)` million and `r round(report_output_text$predicted_ui_ub_sa[2], digits = 1)` million for the week of 3/22-3/28.
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
+Extrapolating Google Trends data from 3/29-3/31 forward to the end of the week, we project `r round(report_output_text$predicted_ui_sa[3], digits = 1)` million UI claims, seasonally adjusted, with confidence intervals of `r round(report_output_text$predicted_ui_lb_sa[3], digits = 1)` and `r round(report_output_text$predicted_ui_ub_sa[3], digits = 1)` million.
 
-weekly_predict_data  %>%  ungroup() %>% 
-  mutate(week_str = case_when(week == 12 ~ "3/15-3/21",
-                                      week == 13 ~ "3/22-3/28")) %>% 
-  group_by(week_str) %>%
-  mutate(predicted_ui_report = predicted_ui_report/1e6,
-         predicted_ui_lb_report = predicted_ui_lb_report/1e6,
-         predicted_ui_ub_report = predicted_ui_ub_report/1e6) %>% 
-  mutate(predicted_ui_sa = case_when(week == 12 ~ predicted_ui_report/0.833,
-                                     week == 13 ~ predicted_ui_report/0.876),
-         predicted_ui_lb_sa = case_when(week == 12 ~ predicted_ui_lb_report/0.833,
-                                     week == 13 ~ predicted_ui_lb_report/0.876),
-         predicted_ui_ub_sa = case_when(week == 12 ~ predicted_ui_ub_report/0.833,
-                                     week == 13 ~ predicted_ui_ub_report/0.876)) %>%
-  select(week_str, ends_with("report"), ends_with("sa")) %>%
-  summarize_all(sum) %>%
-  kable(digits = 1, format.args = list(big.mark = ",", scientific = FALSE),
-        col.names = c("Week", "Predicted UI Claims (millions)", 
-                                  "Lower Bound",
-                                  "Upper Bound",
-                      "Predicted UI Claims (millions)", 
-                                  "Lower Bound",
-                                  "Upper Bound")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
-  add_header_above(c(" " = 2, "95% Confidence Interval" = 2, " " = 1, "95% Confidence Interval" = 2)) %>%
-  add_header_above(c(" " = 1, "Not Seasonally Adjusted" = 3, "Seasonally Adjusted" = 3))
-```
+<!-- ```{r, echo = FALSE} -->
 
+<!-- ggplot(data = weekly_predict_data %>% -->
+<!--          select(predicted_ui_report, location, week) %>% -->
+<!--          spread(week, predicted_ui_report) %>% -->
+<!--          left_join(UI_Claims_March28_True)) + -->
+<!--   geom_text(aes(x = `13`/1000, y = `14`/1000, label=location))  + -->
+<!--   labs(x = "Advance Estimates 3/22-3/28", -->
+<!--        y = "Predicted Estimates 3/29-4/4", -->
+<!--        title = "Which states are going to grow", -->
+<!--        subtitle = "Time Period:  3/29-4/4", -->
+<!--        color = "Prediction") + -->
+<!--   theme_classic(base_size=15) + -->
+<!--   scale_x_log10() + scale_y_log10() + -->
+<!--   geom_abline(slope=1, intercept=0) -->
 
-We predict large variation across states and the table below describes, for each state, the estimated claims level based only on extrapolation from news reports, the Google Trends change and the forecast claims level based on the model combining news reports and Google Trends information. These state estimates are not seasonally adjusted.
+<!-- ``` -->
 
-```{r, echo = FALSE, warning=FALSE, message=FALSE}
+We predict large variation across states and the table in the Appendix describes, for each state, the estimated claims level based only on extrapolation from news reports, the Google Trends change and the forecast claims level based on the model combining news reports and Google Trends information. These state estimates are not seasonally adjusted.
 
-report_output %>% left_join(UI_Claims_March28_True %>% rename(State = location)) %>% 
-  mutate(`2 week total`  = advance_0322 + updated_0315) %>%
-  select(State,
-         google_12, advance_0315, updated_0315,
-           `12`,  google_13, advance_0322,
-         `13`,   `2 week total`,  Total ) %>%
-  kable(digits = 0, format.args = list(big.mark = ",", scientific = FALSE), 
-         col.names = c("State",  "Google Trends Change from 2/22-3/14", "Advance Official UI Claims", "Revised Official UI Claims",  "Predicted UI Claims", "Google Trends Change from 2/22-3/14",  "Advance Official UI Claims", "Predicted UI Claims", "Revised + Advance Official UI Claims", "Predicted UI Claims")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
-  add_header_above(c(" " = 1, "Week 3/15-3/21" = 4, "Week 3/22-3/28" = 3, "Combined Weeks 3/15-3/28"=2)) %>%
-  scroll_box(width = "1000px", height = "400px")
-
-weekly_predict_data %>% ungroup() %>% filter(week == 12 | week == 13) %>%
-  select(location, week, predicted_ui) %>%
-  spread(week, predicted_ui) %>%
-  left_join(UI_Claims_March21_True) %>%
-  left_join(growth_rate_weekly3) %>%
-  rename(State = location) %>%
-  left_join(output2) %>%
-  mutate(google_12 = late - early,
-         google_13 = late_nyt - early) %>%
-  select(State, `UI Claims From News`, Advance, google_12, `12`,  google_13, `13`) %>% 
-  mutate(Total = `12` + `13`) %>% 
-  select(State, pred_total = Total, pred_0315 = `12`, pred_0322 =`13`,) %>%
-  write_csv("data/state_predictions_weekly03312020.csv")
-```
 
 
 
 # Data Sources
 
-## News Sources
 
-We are greatly helped by many states reporting various claims numbers over the course of the week. We gather and harmonize the various reported numbers across press reports to construct a dataset of news "reports". We found reports for all 50 states and the District of Columbia. See this website for the data: https://docs.google.com/spreadsheets/d/1RN1XJLIpU12QUwMpkF0DNiV8fkeqdHbWHta2sRfEZT4/edit#gid=651560
+We are greatly helped by many states reporting various UI claims statistics over the course of recent weeks. We gather and harmonize the various reported numbers across articles to construct a dataset of “reports.” News articles report fact statements that tend to describe the number of claims for a given set of consecutive dates (from start date $S$ to end date $E$) based on information from state officials. For example, an article might say, the State received 10,394 claims on Monday and Tuesday. Since reports vary over what periods that they report data (some report over a 4 day span, some over a one day span), we reconcile these differences by using a “report-level” dataset, wherein each reported fact statement is treated as an observation. For each report, we construct the per-day average claim, and call that our claim measure $C$. We found reports for all 50 states and the District of Columbia and constructed report-level here: https://docs.google.com/spreadsheets/d/1RN1XJLIpU12QUwMpkF0DNiV8fkeqdHbWHta2sRfEZT4/edit#gid=651560
 
-Reports tend to describe the number of claims for a given set of dates (from start date $S$ to end date $E$) based on information from state officials. Since reports vary over what periods that they report data (some report over a 4 day span, some over a one day span), we reconcile these differences by using a "report-level" dataset, wherein each report is treated as an observation. For that report, we construct the per-day average claim, and call that our claim measure $C$. For our estimation below, we then link this to the average of the daily Google Trends data for that particular spell.
+For estimation, we then link this to the average of the daily Google Trends data for that particular spell.
+
 
 ## Google Trends
 
@@ -589,7 +509,7 @@ state_labels = data_states_short %>%
 
 
 plot_data_ntl = national_trend %>% mutate(date = date(date)) %>%
-  filter(date >= ymd("2020-02-22") & date <= ymd("2020-03-29")) %>%
+  filter(date >= ymd("2020-02-22") & date <= ymd("2020-03-31")) %>%
   mutate(location = "USA") %>%
   bind_rows(data_states_short %>% filter(date >= ymd("2020-02-22")) %>% 
               filter(location %in% c("NY", "CA", "OH", "PA", "MI", "FL", "IL")))
@@ -634,147 +554,18 @@ ggplot() +
        color = "Search Regions"
   ) 
 ggsave("plot_data_ntl.pdf")
-# 
-# plot_data_ntl2 = national_trend_combined %>% mutate(date = date(date)) %>%
-#   filter(date >= ymd("2020-02-22")) %>%
-#   mutate(location = "USA") %>%
-#   bind_rows(data_states_short_combined %>% filter(date >= ymd("2020-02-22"))) %>%
-#   left_join(UI_Claims_March21 %>%   arrange(baseline_ui) %>% filter(row_number() > 7*n()/8)) %>%
-#   filter(!is.na(baseline_ui) | location == "USA")
-# 
-# plot_data_ntl2$location = relevel(factor(plot_data_ntl2$location), "USA")
-# 
-# week_growth = plot_data_ntl2 %>% mutate(week = epiweek(date)) %>% 
-#    mutate(late = case_when(week == 12 ~ "late",
-#                           week == 13 ~ "late_nyt",
-#                           TRUE ~ "early"))  %>%
-#   group_by(late, location) %>%
-#   summarize(hits = mean(hits)) %>%
-#   select(hits, location, late) %>%
-#   spread(late, hits) %>% 
-#   mutate(diff = (late_nyt -late) )
-# # 
-# ggplot() +
-#   geom_col(data = week_growth, aes(y = diff, x = reorder(location,-diff)), fill = "blue") +
-#   coord_flip() +
-#   theme_classic(base_size=15) +
-#   labs(x = "States",
-#        y = "Change from 3/15-3/21 to 3/22-3/28",
-#        title="Change in  Google search intensity  for 'File for unemployment'"
-#   )
-# 
-# ggplot() +
-#   geom_text(data = growth_rate_weekly3, aes(y = late_nyt, x = late, label=location)) +
-#   geom_text(data = growth_rate_weekly3 %>% filter(location == "USA"), aes(y = late_nyt, x = late, label=location), color = "red") +
-#   theme_classic(base_size=15) +
-#   labs(x = "Search Intensity on 3/15-3/21",
-#        y = "Search Intensity on 3/22-3/28",
-#        title="Change in Google search intensity for 'File for unemployment'"
-#   ) +
-#   geom_abline(slope=1, intercept=0)  +
-#   xlim(c(0,NA)) + ylim(c(0,NA))
-# ggsave("rel_search_intensity.pdf")
+
 growth_rate_weekly3 %>% select(location, early, late, late_nyt) %>%
   rename(baseline = early, week0315 = late, week0322 = late_nyt) %>% write_csv("growth_rate_weekly.csv")
 
-# ggplot() + 
-#   geom_text(data = week_growth, aes(y = late, x = early, label=location)) + 
-#   geom_text(data = week_growth %>% filter(location == "USA"), aes(y = late, x = early, label=location), color = "red") + 
-#   theme_classic(base_size=15) +
-#   labs(y = "Search Intensity on 3/15-3/21",
-#        x = "Search Intensity in 4 weeks prior",
-#        title="Change in  Google search intensity  for 'File for unemployment'"
-#   ) +
-#   geom_abline(slope=1, intercept=0)  +
-#   xlim(c(0,NA)) + ylim(c(0,NA))
-# 
-# ggplot() + 
-#   geom_text(data = week_growth, aes(y = late_nyt, x = early, label=location)) + 
-#   geom_text(data = week_growth %>% filter(location == "USA"), aes(y = late_nyt, x = late, label=location), color = "red") + 
-#   theme_classic(base_size=15) +
-#   labs(x = "Search Intensity in 4 weeks prior",
-#        y = "Search Intensity on 3/22-3/28",
-#        title="Change in  Google search intensity  for 'File for unemployment'"
-#   ) +
-#   geom_abline(slope=1, intercept=0)  +
-#   xlim(c(0,NA)) + ylim(c(0,NA))
-# 
-# 
-# ggplot() + 
-#   geom_line(data = plot_data_ntl2 %>% filter(date < ymd("2020-03-29")), aes(y = hits, x = date(date), color= as.factor(location))) +
-#   scale_x_date(date_breaks = "7 days", date_labels = "%m-%d") +
-#   geom_text_repel(data = plot_data_ntl2 %>% filter(date < ymd("2020-03-29")) %>% group_by(location) %>% filter(row_number() == n()), 
-#                   aes(y = hits, x = date, label = location, color=location),
-#                   nudge_x = 1.5, show.legend=FALSE) +
-#   geom_rect(aes(xmin=dates$date[sats[1]], xmax=dates$date[suns[1]],
-#                   ymin=-Inf, ymax=Inf),
-#             fill='grey', alpha=0.25) +
-#   geom_rect(aes(xmin=dates$date[sats[2]], xmax=dates$date[suns[2]],
-#                   ymin=-Inf, ymax=Inf),
-#             fill='grey', alpha=0.25) +
-#   geom_rect(aes(xmin=dates$date[sats[3]], xmax=dates$date[suns[3]],
-#                   ymin=-Inf, ymax=Inf),
-#             fill='grey', alpha=0.25) +
-#   geom_rect(aes(xmin=dates$date[sats[4]], xmax=dates$date[suns[4]],
-#                   ymin=-Inf, ymax=Inf),
-#             fill='grey', alpha=0.25) +
-#   geom_rect(aes(xmin=dates$date[sats[5]], xmax=dates$date[suns[5]],
-#                   ymin=-Inf, ymax=Inf),
-#             fill='grey', alpha=0.25) +
-#     geom_rect(aes(xmin=dates$date[sats[6]], xmax=dates$date[suns[6]],
-#                   ymin=-Inf, ymax=Inf),
-#             fill='grey', alpha=0.25) +
-#   theme_classic(base_size=15) +
-#   scale_color_manual(values = c( "black", gg_color_hue(7)))+
-#   labs(x = "Date",
-#        y = "",
-#        title="Daily Google search intensity  for 'File for unemployment'",
-#        subtitle = "From 2020-2-22 to 2020-3-28, highlighting national trend and select states",
-#        caption = "Weekends shaded",
-#        color = "Search Regions"
-#   ) 
-
-
-# regions <- read_excel("data/regions.xlsx")
-# plot_data = data_states_short %>% filter(date >= ymd("2020-02-22")) %>%
-#               left_join(regions) %>%
-#   group_by(location) %>% mutate(hits_lastday = case_when(row_number() ==n()-1 ~ hits)) %>%
-#   group_by(bigregion) %>% mutate(max_index = max(hits, na.rm=TRUE),
-#                               min_index = min(hits_lastday, na.rm=TRUE)) %>%
-#   group_by(location) %>%
-#   mutate(highlight_state = case_when(max_index == hits | (min_index == hits & row_number() == n()-1) | 
-#                                        ((location == "OH" | location == "CA") & row_number() == n()) ~ 1)) %>%
-#   mutate(highlight_state2 = max(highlight_state, na.rm=TRUE))
-
-# ggplot() + 
-#   geom_line(data = plot_data,
-#             aes(y = hits, x = date, group= location), alpha = 0.3, show = FALSE) +
-#     geom_line(data = plot_data %>% filter(highlight_state2 ==1),
-#             aes(y = hits, x = date, color = as.factor(location)), show = FALSE) +
-#   scale_x_date(date_breaks = "14 days", date_labels = "%m-%d") +
-#   theme_classic(base_size=15) +
-#   theme(
-#   strip.background = element_blank(),
-#   #strip.text.x = element_blank()
-#   strip.text = element_text(size=10)
-#   ) +
-#   geom_text_repel(data = plot_data %>% filter(highlight_state == 1), 
-#                   aes(y = hits, x = date, label = location),
-#                   nudge_x = 1.5, show.legend=FALSE) +
-#   facet_wrap(~bigregion) +
-#   labs(x = "Date",
-#        y = "",
-#        title="Daily Google search intensity, by state, for 'File for unemployment'",
-#        subtitle = "From 2020-2-22 to 2020-3-20, highlighting select states",
-#   ) +
-#   geom_hline(yintercept = 0, linetype=3)
 ```
 
 
 # Estimation
-Finally, we consider the relationship between these two measures. For the purposes of estimation, we focus on estimating only using reports that ended by 3/21. That way we are able to use the reports in the week of 3/22-3/28 as validation for our empirical model, as we discuss at the end.
+Finally, we consider the relationship between these two measures. For the purposes of estimation, we focus on estimating only with reports that ended by 3/21. That way we are able to use news and official reports for the week of 3/22-3/28 as validation for our empirical model, as we discuss at the end.
 
-With the claims reports as data points, we construct a growth measure, relative to each state’s the average of initial claims in the four prior weeks, ending Saturdays 2/22-3/14. We consider the change in the Google Trends index between the most recent week (3/15-3/21) and the day of the week average from the last four weeks (2/22-3/14). We then plot these two measures to consider how correlated the change in Google Trends search intensity is with UI growth.
+With the claims reports as data points, we construct a growth measure, relative to each state’s average of initial claims in the four prior weeks, ending Saturdays 2/22-3/14. We consider the change in the Google Trends index between the 3/15-3/21 week and the day of the week average from the last four weeks (2/22-3/14). We then plot these two measures to consider how correlated the change in Google Trends search intensity is with UI growth.
+
 
 ```{r, fig.height = 8, echo=FALSE, warning=FALSE, message=FALSE}
 
@@ -832,55 +623,36 @@ a
 
 We find a strong relationship between the two variables, with an adjusted $R^{2}$ of `r round(a$adj.r.squared, digits = 4)` when we weight observations by the states' baseline UI claims.  We use this estimated model and observed Google Trends changes to predict unemployment claims for the states lacking news-based estimates.
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-ggplot(data = daily_predict_data %>% filter(!is.na(ui_claims_daily)) ) +
-  geom_point(aes(y = ui_claims_report_daily_hat/baseline_ui, x = hits - early, 
-                 size = baseline_ui, color = "Predicted Growth in UI")) +
-  geom_point(aes(y = ui_claims_daily/baseline_ui, 
-                 x = hits - early, size = baseline_ui,  
-                 color = "Actual Growth in UI")) +
-  theme_classic(base_size=15) +
-  theme(
-  strip.background = element_blank(),
-  #strip.text.x = element_blank()
-  strip.text = element_text(size=10)
-  ) +
-  labs(x = "Change in Google Search Intensity",
-       y = "Growth in UI Filings",
-       title="Daily Google search intensity vs. UI Claims",
-       subtitle = "From 2020-3-15 to 2020-3-22",
-       caption = "Growth in UI claims from news reports",
-       size = "Baseline UI Claims",
-       color = "Actual vs. Fitted"
-  )
-
-```
-
-Finally, we want to forecast the single statistic of weekly national initial claims. We do this in a very simple way, predicting the level of UI growth based on our model and the daily Google trends data, and then converting in UI claims numbers. We then sum up these predicted measures across states for each week. For the seasonally adjusted numbers, we then scale up 3/15-3/21 by 0.833, and 3/22-3/28 by 0.876.
+Finally, we want to forecast the single statistic of weekly national initial claims. We do this in a very simple way, predicting the level of UI growth based on our model and the daily Google trends data, and then converting into predicted UI claims numbers. We sum these predicted measures across states for each week. For seasonally-adjusted numbers, we then scale up 3/15-3/21 by 0.833, and 3/22-3/28 by 0.876, per U.S. DOL practice.
 
 For the week of 3/15-3/21, we predicted `r round(report_output_text$predicted_ui_sa[1], digits = 1)` million UI claims, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[1], digits = 1)` million and `r round(report_output_text$predicted_ui_ub_sa[1], digits = 1)` million for the week of 3/15-3/21.
 
-For the week of 3/22-3/28, the figure of Google Trends interest above shows that Sunday, March 22, the first day that will be included in the report, was 500 percent higher than the prior Sunday and Monday 250 percent higher than the prior Monday. Google Trends interest continues to be high throughout the week, suggesting that there is significant UI activity. Combining this information with our model implies a prediction of `r round(report_output_text$predicted_ui_sa[2], digits = 1)` million UI claims, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[2], digits = 1)` million and `r round(report_output_text$predicted_ui_ub_sa[2], digits = 1)` million for the week of 3/22-3/28. 
+For the week of 3/22-3/28, the figure of Google Trends interest above shows that Sunday, March 22, the first day that will be included in the report, was 500 percent higher than the prior Sunday and Monday 250 percent higher than the prior Monday. Google Trends interest continued to be high throughout the week, suggesting that significant new UI activity. Combining this information with our model implies a prediction of `r round(report_output_text$predicted_ui_sa[2], digits = 1)` million UI claims, with a 95\% CI of `r round(report_output_text$predicted_ui_lb_sa[2], digits = 1)` million and `r round(report_output_text$predicted_ui_ub_sa[2], digits = 1)` million for the week of 3/22-3/28. 
 
 We additionally report the non-seasonally adjusted numbers below as well.
+
 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 weekly_predict_data  %>%  ungroup() %>% 
   mutate(week_str = case_when(week == 12 ~ "3/15-3/21",
-                                      week == 13 ~ "3/22-3/28")) %>% 
+                              week == 13 ~ "3/22-3/28",
+                              week == 14 ~ "3/29-4/4")) %>% 
   group_by(week_str) %>%
   mutate(predicted_ui_report = predicted_ui_report/1e6,
          predicted_ui_lb_report = predicted_ui_lb_report/1e6,
          predicted_ui_ub_report = predicted_ui_ub_report/1e6) %>% 
-  mutate(predicted_ui_sa = case_when(week == 12 ~ predicted_ui_report/0.833,
-                                     week == 13 ~ predicted_ui_report/0.876),
-         predicted_ui_lb_sa = case_when(week == 12 ~ predicted_ui_lb_report/0.833,
-                                     week == 13 ~ predicted_ui_lb_report/0.876),
-         predicted_ui_ub_sa = case_when(week == 12 ~ predicted_ui_ub_report/0.833,
-                                     week == 13 ~ predicted_ui_ub_report/0.876)) %>%
+mutate(predicted_ui_report_sa = case_when(week == 12 ~ predicted_ui_report/0.833,
+                                     week == 13 ~ predicted_ui_report/0.876,
+                                     week == 14 ~ predicted_ui_report*1.065),
+         predicted_ui_lb_report_sa = case_when(week == 12 ~ predicted_ui_lb_report/0.833,
+                                     week == 13 ~ predicted_ui_lb_report/0.876,
+                                     week == 14 ~ predicted_ui_lb_report*1.065),
+         predicted_ui_ub_report_sa = case_when(week == 12 ~ predicted_ui_ub_report/0.833,
+                                     week == 13 ~ predicted_ui_ub_report/0.876,
+                                     week == 14 ~ predicted_ui_ub_report*1.065)) %>%
   select(week_str, ends_with("report"), ends_with("sa")) %>%
   summarize_all(sum) %>%
   kable(digits = 1, format.args = list(big.mark = ",", scientific = FALSE),
@@ -911,10 +683,8 @@ evaluation = weekly_predict_data %>% ungroup() %>%
   select(`State` = location,
          Advance,
          `Predicted UI Claims` = predicted_ui_report, 
-         `Lower Bound`=predicted_ui_lb,
-         `Upper Bound`=predicted_ui_ub) %>% 
-  left_join(output2)  %>%
-  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+         `Lower Bound`=predicted_ui_lb_report,
+         `Upper Bound`=predicted_ui_ub_report)
 
 ggplot(data = evaluation) +
   geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
@@ -956,11 +726,7 @@ evaluation = weekly_predict_data %>% ungroup() %>%
   left_join(UI_Claims_March28_True) %>%
   select(`State` = location,
          Advance = updated_0315,
-         `Predicted UI Claims` = predicted_ui_report, 
-         `Lower Bound`=predicted_ui_lb,
-         `Upper Bound`=predicted_ui_ub) %>% 
-  left_join(output2)  %>%
-  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+         `Predicted UI Claims` = predicted_ui_report)
 
 ggplot(data = evaluation) +
   geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
@@ -1010,6 +776,8 @@ validation_data = daily_predict_data %>%
             num_days = n()) %>%
   inner_join(UI_Claims_March21 %>% select(location, baseline_ui)) %>%
   mutate(claims_norm = claims / baseline_ui, y_hat_norm = ui_claims_report_daily_hat / baseline_ui)
+
+
 ggplot(data = validation_data) +
   geom_text(aes(x = claims/1000, y=ui_claims_report_daily_hat/1000, label = location)) +
   geom_abline(slope = 1, intercept = 0) +
@@ -1041,11 +809,7 @@ evaluation = weekly_predict_data %>% ungroup() %>%
   left_join(UI_Claims_March28_True) %>%
   select(`State` = location,
          Advance = advance_0322,
-         `Predicted UI Claims` = predicted_ui_report, 
-         `Lower Bound`=predicted_ui_lb,
-         `Upper Bound`=predicted_ui_ub) %>% 
-  left_join(output2)  %>%
-  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+         `Predicted UI Claims` = predicted_ui_report) 
 
 ggplot(data = evaluation) +
   geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
@@ -1080,7 +844,8 @@ ggplot(data = evaluation) +
 
 ## Combining the two weeks
 
-Finally, to avoid the congestion concerns, we can consider how we did at predicting the sum of the advance estimates, i.e. the total of the two sets of advance estimates between 3/15-3/28.
+Finally, to minimize the role of congestion concerns by averaging across weeks, we consider how the model did at predicting the sum of the advance estimates, i.e. the total of the two sets of advance estimates between 3/15-3/28.
+
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 evaluation = weekly_predict_data %>% group_by(location) %>% 
@@ -1090,9 +855,7 @@ evaluation = weekly_predict_data %>% group_by(location) %>%
   mutate(advance_sum = (advance_0322 + advance_0315)) %>%
   select(`State` = location,
          Advance = advance_sum,
-         `Predicted UI Claims` = predicted_ui_report) %>% 
-  left_join(output2)  %>%
-  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+         `Predicted UI Claims` = predicted_ui_report)  
 
 model_graph = summary(lm(data = evaluation, Advance ~ `Predicted UI Claims`))
 ggplot(data = evaluation) +
@@ -1134,9 +897,7 @@ evaluation = weekly_predict_data %>% group_by(location) %>%
          predicted_ui_report = predicted_ui_report/labor_force) %>%
   select(`State` = location,
          Advance = advance_sum,
-         `Predicted UI Claims` = predicted_ui_report, labor_force) %>% 
-  left_join(output2)  %>%
-  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`, labor_force) 
+         `Predicted UI Claims` = predicted_ui_report, labor_force) 
 
 model_graph = summary(lm(data = evaluation, Advance ~ `Predicted UI Claims`))
 ggplot(data = evaluation) +
@@ -1163,9 +924,7 @@ evaluation = weekly_predict_data %>% group_by(location) %>%
   mutate(advance_sum = advance_0322 + updated_0315) %>%
   select(`State` = location,
          Advance = advance_sum,
-         `Predicted UI Claims` = predicted_ui_report) %>% 
-  left_join(output2)  %>%
-  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`) 
+         `Predicted UI Claims` = predicted_ui_report)
 
 ggplot(data = evaluation) +
   geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
@@ -1193,4 +952,37 @@ ggplot(data = evaluation) +
   scale_x_log10() +
   geom_abline(slope=1, intercept=0)
 
+```
+
+# Appendix
+
+## Latest Results
+We predict large variation across states and the table below describes, for each state, the estimated claims level based only on extrapolation from news reports, the Google Trends change and the forecast claims level based on the model combining news reports and Google Trends information. These state estimates are not seasonally adjusted.
+
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+
+report_output %>% left_join(UI_Claims_March28_True %>% rename(State = location)) %>% 
+  mutate(`2 week total`  = advance_0322 + updated_0315) %>%
+  select(State,
+         google_12, advance_0315, updated_0315,
+           `12`,  google_13, advance_0322,
+         `13`,   `2 week total`,  Total ) %>%
+  kable(digits = 0, format.args = list(big.mark = ",", scientific = FALSE), 
+         col.names = c("State",  "Google Trends Change from 2/22-3/14", "Advance Official UI Claims", "Revised Official UI Claims",  "Predicted UI Claims", "Google Trends Change from 2/22-3/14",  "Advance Official UI Claims", "Predicted UI Claims", "Revised + Advance Official UI Claims", "Predicted UI Claims")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  add_header_above(c(" " = 1, "Week 3/15-3/21" = 4, "Week 3/22-3/28" = 3, "Combined Weeks 3/15-3/28"=2)) %>%
+  scroll_box(width = "1000px", height = "400px")
+
+weekly_predict_data %>% ungroup() %>% filter(week == 12 | week == 13) %>%
+  select(location, week, predicted_ui = predicted_ui_report) %>%
+  spread(week, predicted_ui) %>%
+  left_join(UI_Claims_March21_True) %>%
+  left_join(growth_rate_weekly3) %>%
+  rename(State = location) %>%
+  mutate(google_12 = late - early,
+         google_13 = late_nyt - early) %>%
+  select(State,  Advance, google_12, `12`,  google_13, `13`) %>% 
+  mutate(Total = `12` + `13`) %>% 
+  select(State, pred_total = Total, pred_0315 = `12`, pred_0322 =`13`,) %>%
+  write_csv("data/state_predictions_weekly03312020.csv")
 ```
