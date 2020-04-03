@@ -32,7 +32,8 @@ library(knitr)
 library(kableExtra)
 library(readxl)
 library(janitor)
-
+library(RColorBrewer)
+library(data.table)
 
 lm_eqn = function(m) {
 
@@ -1258,15 +1259,101 @@ complete_map
 takeout_map
 ```
 
+We define partial closures as orders that prohibited restaurants from having patrons dine in. In many states, other provisions were included in these orders (e.g., limits on gathering sizes, requirements for bars/clubs to close). We use the switch to take-out only for consistency. 
+
+We define complete closures as orders for non-essential businesses to close. States vary in their definitions of essential businesses, and some states also put stay at home or shelter in place orders. For consistency, we hone in specifically on the non-essential business closures. 
+
+Both of these definitions are consistent with analyzing policy effects on UI claims and search activity -- as businesses close, layoffs increase. 
 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
+#Set up data for event studies
 data_policy_states2 <- data_policy_states
   names(data_policy_states2)[names(data_policy_states2)=="state_abbr"] <- "location" 
   subset(data_policy_states2, select = -c(notes, region))
 
 policy_event_study <- left_join(data_states_short_combined, data_policy_states2, by = "location") 
+policy_event_study <- subset(policy_event_study, date > as.Date("2020-03-01") )
 
+policy_event_study$daystopartial<- difftime(policy_event_study$date, policy_event_study$partial , units = c("days"))
+policy_event_study$daystocomplete<- difftime(policy_event_study$date, policy_event_study$complete , units = c("days"))
+
+#Define event study pre and post length
+es_start = -7
+es_end = 4
+es_length = 11
+
+#Event study around partial closure policies
+partial_es_data <-
+  policy_event_study %>% 
+  drop_na(partial) %>% 
+  filter(daystopartial >= es_start & daystopartial <= es_end)
+
+partial_es_data <- within(partial_es_data, daystopartial <- relevel(as.factor(daystopartial), ref = 7))
+
+partial_es <- plm(hits ~ as.factor(daystopartial), 
+             data = partial_es_data, 
+             index = "location", 
+             effect = "individual",
+             model = "within")
+summary(partial_es)
+
+partial_coefs = as.data.frame(summary(partial_es)$coefficients[1:es_length])
+colnames(coefs)[1] <- "coeffecients"
+partial_coefs$timefrompartial <- es_start:(es_end-1)
+partial_coefs$timefrompartial <- ifelse(partial_coefs$timefrompartial >=-1, partial_coefs$timefrompartial + 1, partial_coefs$timefrompartial)
+
+partial_es_plot <- ggplot(data=coefs, aes(x=timefrompartial, y=coeffecients))+
+  geom_line(,color = "light blue") + 
+  geom_vline(xintercept = 0, color = "blue") +
+  labs(y = "Change in Google Search Intensity",
+       x = "Days from Partial Closure Order",
+       title="Search Trends in Response to Partial Closures") +
+  theme_classic(base_size=15) +
+  scale_x_continuous(breaks = seq(-7, 4, by = 1))
+
+#Event study around complete closure policies
+
+complete_es_data <-
+  policy_event_study %>% 
+  drop_na(complete) %>% 
+  filter(daystocomplete >= es_start & daystocomplete <= es_end)
+
+## This sets the baseline period to t-1, change by making ref = 8 for t0 or ref = 6 for t-2
+complete_es_data <- within(complete_es_data, daystocomplete <- relevel(as.factor(daystocomplete), ref = 7))
+
+complete_es <- plm(hits ~ as.factor(daystocomplete), 
+             data = partial_es_data, 
+             index = "location", 
+             effect = "individual",
+             model = "within")
+summary(complete_es)
+
+complete_coefs = as.data.frame(summary(complete_es)$coefficients[1:es_length])
+colnames(complete_coefs)[1] <- "coeffecients"
+complete_coefs$timefromcomplete <- es_start:(es_end-1)
+complete_coefs$timefromcomplete <- ifelse(complete_coefs$timefromcomplete >=-1, complete_coefs$timefromcomplete + 1, complete_coefs$timefromcomplete)
+
+#Plot the event study
+complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffecients))+
+  geom_line(,color = "light blue") + 
+  geom_vline(xintercept = 0, color = "blue") +
+  labs(y = "Change in Google Search Intensity",
+       x = "Days from Complete Closure Order",
+       title="Search Trends in Response to Complete Closures") +
+  theme_classic(base_size=15) +
+  scale_x_continuous(breaks = seq(-7, 4, by = 1))
+
+```
+
+
+##Search Trends in Response to Policies
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+partial_es_plot
+complete_es_plot
 
 ```
