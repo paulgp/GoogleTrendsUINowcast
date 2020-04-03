@@ -768,7 +768,7 @@ Since we only use the week of 3/15-3/21 to estimate the model, we can also use t
 validation_data = daily_predict_data %>% 
   select(location, date, ui_claims_report_daily_hat) %>% 
   inner_join(report_level_UI_data_fill) %>%
-  filter(week(date) >12) %>%
+  filter(epiweek(date) == 13) %>%
   group_by(report_id, location) %>%
   summarize(ui_claims_report_daily_hat = sum(ui_claims_report_daily_hat, 
                                              na.rm = TRUE),
@@ -849,6 +849,7 @@ Finally, to minimize the role of congestion concerns by averaging across weeks, 
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 evaluation = weekly_predict_data %>% group_by(location) %>% 
+  filter(week == 12 | week == 13) %>%
   summarize(predicted_ui_report = sum(predicted_ui_report)) %>%
   left_join(UI_Claims_March28_True) %>%
   left_join(lf_state) %>%
@@ -857,7 +858,7 @@ evaluation = weekly_predict_data %>% group_by(location) %>%
          Advance = advance_sum,
          `Predicted UI Claims` = predicted_ui_report)  
 
-model_graph = summary(lm(data = evaluation, Advance ~ `Predicted UI Claims`))
+
 ggplot(data = evaluation) +
   geom_text(aes(x = Advance/1000, y = `Predicted UI Claims`/1000, label=State)) +
   labs(x = "Advance Official Estimates (thousands)",
@@ -890,6 +891,7 @@ and scaled by labor force as of February 2020:
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 evaluation = weekly_predict_data %>% group_by(location) %>% 
+  filter(week == 12 | week == 13) %>%
   summarize(predicted_ui_report = sum(predicted_ui_report)) %>%
   left_join(UI_Claims_March28_True) %>%
   left_join(lf_state) %>%
@@ -919,6 +921,7 @@ As a check, comparing to the advance + revised:
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 evaluation = weekly_predict_data %>% group_by(location) %>% 
+  filter(week == 12 | week == 13) %>%
   summarize(predicted_ui_report = sum(predicted_ui_report)) %>%
   left_join(UI_Claims_March28_True) %>%
   mutate(advance_sum = advance_0322 + updated_0315) %>%
