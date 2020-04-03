@@ -3,6 +3,7 @@ title: "Predicting Initial Unemployment Insurance Claims Using Google Trends"
 author: "Paul Goldsmith-Pinkham + Aaron Sojourner"
 date: "4/1/2020"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
 ---
@@ -1218,7 +1219,7 @@ complete_map <-
   ggplot(dates_map, aes(long, lat, group = group)) + 
   geom_polygon(aes(fill = factor(complete)), color = "white") + 
   ggtitle("Non-Essential Business Closure Orders") +
-  scale_fill_manual(values = colorRampPalette(brewer.pal(13, "GnBu"))(13), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(13, "BuPu"))(13), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
   theme(axis.text.x = element_blank(),
         axis.text.y = element_blank(),
         axis.ticks = element_blank(),
@@ -1233,7 +1234,7 @@ takeout_map <-
   ggplot(dates_map, aes(long, lat, group = group)) + 
   geom_polygon(aes(fill = factor(partial)), color = "white") + 
   ggtitle("Prohibition on Dining In and Partial Closure Orders") +
-  scale_fill_manual(values = colorRampPalette(brewer.pal(13, "BuPu"))(13), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(13, "GnBu"))(13), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
   theme(axis.text.x = element_blank(),
         axis.text.y = element_blank(),
         axis.ticks = element_blank(),
@@ -1306,8 +1307,8 @@ partial_coefs$timefrompartial <- ifelse(partial_coefs$timefrompartial >=-1, part
 
 #Plot the event study
 partial_es_plot <- ggplot(data=coefs, aes(x=timefrompartial, y=coeffecients))+
-  geom_line(,color = "light blue") + 
-  geom_vline(xintercept = 0, color = "purple") +
+  geom_line(,color = "darkgray") + 
+  geom_vline(xintercept = 0, color = "cadetblue3", size = 1.5, alpha = .75) +
   labs(y = "Change in Google Search Intensity",
        x = "Days from Partial Closure Order",
        title="Search Trends in Response to Partial Closures") +
@@ -1337,8 +1338,8 @@ complete_coefs$timefromcomplete <- ifelse(complete_coefs$timefromcomplete >=-1, 
 
 #Plot the event study
 complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffecients))+
-  geom_line(,color = "light blue") + 
-  geom_vline(xintercept = 0, color = "blue") +
+  geom_line(,color = "darkgray") + 
+  geom_vline(xintercept = 0, color = "mediumpurple2", size = 1.5, alpha = .75) +
   labs(y = "Change in Google Search Intensity",
        x = "Days from Complete Closure Order",
        title="Search Trends in Response to Complete Closures") +
@@ -1358,7 +1359,8 @@ complete_es_plot
 
 #Plot one state with both policies as an example (add daily UI first)
 
-plotstate = "TX" #Change this to see another state
+plotstate = "WI" #Change this to see another state
+cares = as.Date("2020-03-27")
 
 #First merge in daily UI data
   policy_event_study_withdailyui <- right_join(daily_UI_Claims, policy_event_study, by = c("location", "date"))
@@ -1367,11 +1369,12 @@ plotstate = "TX" #Change this to see another state
 
 #Plot daily trends data
 dailygoogleplot_plotstate <- ggplot(data = policy_event_study_plotstate, aes(x=date, y=hits)) + 
-  geom_line(,color = "light blue") + 
-  geom_vline(aes(xintercept = mean(partial), color = "Partial"), show.guide = TRUE) + 
-  geom_vline(aes(xintercept = mean(complete), color = "Complete"), show.guide = TRUE) +
-  scale_color_manual(name = "Closure Orders", values = c(Partial = "blue", Complete = "purple")) +
-  theme_classic(base_size=15) + 
+  geom_line(,color = "darkgray") + 
+  geom_vline(aes(xintercept = mean(partial), color = "Partial Closure"), show.guide = TRUE, alpha = .75, size = 1.5) + 
+  geom_vline(aes(xintercept = mean(complete), color = "Complete Closure"), show.guide = TRUE, alpha = .75, size = 1.5) +
+    geom_vline(aes(xintercept = cares, color = "CARES Act"), show.guide = TRUE, alpha = .75, size = 1.5) +
+    scale_color_manual(name = "Policies", values = c("Partial Closure" = "cadetblue3", "Complete Closure" = "mediumpurple2", "CARES Act" = "palegreen4")) +
+  theme_classic(base_size=10) + 
   theme(legend.position = "bottom") +
   labs(x = "Time",
        y = "Google Search Trends", 
@@ -1379,11 +1382,12 @@ dailygoogleplot_plotstate <- ggplot(data = policy_event_study_plotstate, aes(x=d
 
 #Plot daily UI claims with policies (this is pretty useless right now, because we don't have enough daily data)
 dailyuiplot_plotstate <- ggplot(data = policy_event_study_plotstate, aes(x=date, y=ui_claims_daily)) + 
-  geom_line(,color = "light blue") + 
-  geom_vline(aes(xintercept = mean(partial), color = "Partial"), show.guide = TRUE) + 
-  geom_vline(aes(xintercept = mean(complete), color = "Complete"), show.guide = TRUE) +
-  scale_color_manual(name = "Closure Orders", values = c(Partial = "blue", Complete = "purple")) +
-  theme_classic(base_size=15) + 
+  geom_line(,color = "darkgray") + 
+  geom_vline(aes(xintercept = mean(partial), color = "Partial Closure"), show.guide = TRUE, alpha = .75, size = 1.5) + 
+  geom_vline(aes(xintercept = mean(complete), color = "Complete Closure"), show.guide = TRUE, alpha = .75, size = 1.5) +
+      geom_vline(aes(xintercept = cares, color = "CARES Act"), show.guide = TRUE, alpha = .75, size = 1.5) +
+    scale_color_manual(name = "Policies", values = c("Partial Closure" = "cadetblue3", "Complete Closure" = "mediumpurple2", "CARES Act" = "palegreen4")) +
+  theme_classic(base_size=10) + 
   theme(legend.position = "bottom") +
   labs(x = "Time",
        y = "Daily UI Claims", 
@@ -1395,6 +1399,9 @@ dailyuiplot_plotstate
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+#This all kind of ends up being useless-- should play around with more 
+
 
 #Now look at weekly search trends and UI data by week of policy adoption 
 
@@ -1441,12 +1448,5 @@ weekly_claims_policy <- weekly_claims_policy %>%
 
 #ggplot(weekly_claims_policy, aes(x = week, y = claims_pchg, color = partial_week)) + geom_path()
 
-weekly_claims_policy <- within(weekly_claims_policy, daystocomplete <- relevel(as.factor(daystocomplete), ref = 7))
-
-complete_es <- plm(clsimd ~ as.factor(partial_week), 
-             data = partial_es_data, 
-             index = "location", 
-             effect = "individual",
-             model = "within")
 
 ```
