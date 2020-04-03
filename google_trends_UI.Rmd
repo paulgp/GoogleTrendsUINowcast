@@ -1198,7 +1198,7 @@ ggplot(data = evaluation) +
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-#Liz doing state policy stuff 
+###### Liz doing state policy stuff #######
 
 data_policy_states = read_xlsx("data/covid_closures_by_state.xlsx") 
 
@@ -1269,9 +1269,9 @@ Both of these definitions are consistent with analyzing policy effects on UI cla
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 #Set up data for event studies
-data_policy_states2 <- data_policy_states
-  names(data_policy_states2)[names(data_policy_states2)=="state_abbr"] <- "location" 
-  subset(data_policy_states2, select = -c(notes, region))
+data_policy_states2 <- data_policy_states 
+names(data_policy_states2)[names(data_policy_states2) == "state_abbr"] <- "location"
+data_policy_states2 <- within(data_policy_states2, rm("notes", "region", "fips"))
 
 policy_event_study <- left_join(data_states_short_combined, data_policy_states2, by = "location") 
 policy_event_study <- subset(policy_event_study, date > as.Date("2020-03-01") )
@@ -1290,6 +1290,7 @@ partial_es_data <-
   drop_na(partial) %>% 
   filter(daystopartial >= es_start & daystopartial <= es_end)
 
+## This sets the baseline period to t-1, change by making ref = 8 for t0 or ref = 6 for t-2
 partial_es_data <- within(partial_es_data, daystopartial <- relevel(as.factor(daystopartial), ref = 7))
 
 partial_es <- plm(hits ~ as.factor(daystopartial), 
@@ -1297,16 +1298,16 @@ partial_es <- plm(hits ~ as.factor(daystopartial),
              index = "location", 
              effect = "individual",
              model = "within")
-summary(partial_es)
 
 partial_coefs = as.data.frame(summary(partial_es)$coefficients[1:es_length])
 colnames(coefs)[1] <- "coeffecients"
 partial_coefs$timefrompartial <- es_start:(es_end-1)
 partial_coefs$timefrompartial <- ifelse(partial_coefs$timefrompartial >=-1, partial_coefs$timefrompartial + 1, partial_coefs$timefrompartial)
 
+#Plot the event study
 partial_es_plot <- ggplot(data=coefs, aes(x=timefrompartial, y=coeffecients))+
   geom_line(,color = "light blue") + 
-  geom_vline(xintercept = 0, color = "blue") +
+  geom_vline(xintercept = 0, color = "purple") +
   labs(y = "Change in Google Search Intensity",
        x = "Days from Partial Closure Order",
        title="Search Trends in Response to Partial Closures") +
@@ -1328,9 +1329,8 @@ complete_es <- plm(hits ~ as.factor(daystocomplete),
              index = "location", 
              effect = "individual",
              model = "within")
-summary(complete_es)
 
-complete_coefs = as.data.frame(summary(complete_es)$coefficients[1:es_length])
+complete_coefs <- as.data.frame(summary(complete_es)$coefficients[1:es_length])
 colnames(complete_coefs)[1] <- "coeffecients"
 complete_coefs$timefromcomplete <- es_start:(es_end-1)
 complete_coefs$timefromcomplete <- ifelse(complete_coefs$timefromcomplete >=-1, complete_coefs$timefromcomplete + 1, complete_coefs$timefromcomplete)
@@ -1345,15 +1345,108 @@ complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffe
   theme_classic(base_size=15) +
   scale_x_continuous(breaks = seq(-7, 4, by = 1))
 
+
+
+partial_es_plot
+complete_es_plot
+
 ```
 
-
-##Search Trends in Response to Policies
 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-partial_es_plot
-complete_es_plot
+#Plot one state with both policies as an example (add daily UI first)
+
+plotstate = "TX" #Change this to see another state
+
+#First merge in daily UI data
+  policy_event_study_withdailyui <- right_join(daily_UI_Claims, policy_event_study, by = c("location", "date"))
+  policy_event_study_plotstate <- policy_event_study_withdailyui %>% 
+    filter(location == plotstate)
+
+#Plot daily trends data
+dailygoogleplot_plotstate <- ggplot(data = policy_event_study_plotstate, aes(x=date, y=hits)) + 
+  geom_line(,color = "light blue") + 
+  geom_vline(aes(xintercept = mean(partial), color = "Partial"), show.guide = TRUE) + 
+  geom_vline(aes(xintercept = mean(complete), color = "Complete"), show.guide = TRUE) +
+  scale_color_manual(name = "Closure Orders", values = c(Partial = "blue", Complete = "purple")) +
+  theme_classic(base_size=15) + 
+  theme(legend.position = "bottom") +
+  labs(x = "Time",
+       y = "Google Search Trends", 
+       title = paste("Google Search Trends Over Time in", plotstate))
+
+#Plot daily UI claims with policies (this is pretty useless right now, because we don't have enough daily data)
+dailyuiplot_plotstate <- ggplot(data = policy_event_study_plotstate, aes(x=date, y=ui_claims_daily)) + 
+  geom_line(,color = "light blue") + 
+  geom_vline(aes(xintercept = mean(partial), color = "Partial"), show.guide = TRUE) + 
+  geom_vline(aes(xintercept = mean(complete), color = "Complete"), show.guide = TRUE) +
+  scale_color_manual(name = "Closure Orders", values = c(Partial = "blue", Complete = "purple")) +
+  theme_classic(base_size=15) + 
+  theme(legend.position = "bottom") +
+  labs(x = "Time",
+       y = "Daily UI Claims", 
+       title = paste("Daily UI Claims Over Time in", plotstate))
+
+dailygoogleplot_plotstate
+dailyuiplot_plotstate
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+#Now look at weekly search trends and UI data by week of policy adoption 
+
+#First bring in weekly claims data prior to COVID 
+weekly_UI_janthrumarch = as.data.frame(read_xlsx("data/UI_claims_jan1thrumarch21.xlsx"))
+names(weekly_UI_janthrumarch)[names(weekly_UI_janthrumarch) == "State"] <- "state"
+names(weekly_UI_janthrumarch)[names(weekly_UI_janthrumarch) == "Filed week ended"] <- "week"
+names(weekly_UI_janthrumarch)[names(weekly_UI_janthrumarch) == "Initial Claims"] <- "claims"
+weekly_UI_janthrumarch <- mutate_at(weekly_UI_janthrumarch, "week", funs(ymd)) %>%
+  mutate(week = epiweek(week)) 
+weekly_UI_janthrumarch <- subset(weekly_UI_janthrumarch, select = c("state", "week", "claims"))
+
+weekly_UI_janthrumarch <- left_join(weekly_UI_janthrumarch, data_policy_states2[, c("state", "location")], by = "state")
+
+#Clean data from week ending March 28 (4/2/20 news release)
+week13ui <- subset(UI_Claims_March28_True, select = c("location", "advance_0322"))
+week13ui$week <- 13
+names(week13ui)[names(week13ui) == "advance_0322"] <- "claims"
+week13ui <- left_join(week13ui, data_policy_states2[, c("state", "location")], by = "location")
+
+#Merge together to get all weekly UI data available
+weekly_UI_janthrumarch <- rbind(weekly_UI_janthrumarch, week13ui, by = "location")
+
+#Merge with policy data at week-level
+weekly_claims_policy <- left_join(weekly_UI_janthrumarch, data_policy_states2[, c("partial_week", "complete_week", "location")], by = "location")
+
+weekly_claims_policy <- weekly_claims_policy %>%
+    group_by(location) %>%
+    mutate(week = as.numeric(week)) %>%
+    arrange(location ,week) %>%
+    mutate(claims = as.numeric(claims))  %>%
+    mutate(claims_pchg = 100*(claims - dplyr::lag(claims))/dplyr::lag(claims)) %>%
+    filter(week >=9) 
+
+#There's really nothing interesting here. A few late-adopting states seem to have big increases in week 13, but I think this is more to do with technology issues (so claims were late). 
+
+#ggplot(subset(weekly_claims_policy, complete_week == 13), aes(x = week, y = claims_pchg, color = state)) + geom_path()
+
+#ggplot(subset(weekly_claims_policy, complete_week == 12), aes(x = week, y = claims_pchg, color = state)) + geom_path()
+
+#ggplot(subset(weekly_claims_policy, partial_week == 12), aes(x = week, y = claims_pchg, color = state)) + geom_path()
+
+#ggplot(subset(weekly_claims_policy, partial_week == 13), aes(x = week, y = claims_pchg, color = state)) + geom_path()
+
+#ggplot(weekly_claims_policy, aes(x = week, y = claims_pchg, color = partial_week)) + geom_path()
+
+weekly_claims_policy <- within(weekly_claims_policy, daystocomplete <- relevel(as.factor(daystocomplete), ref = 7))
+
+complete_es <- plm(clsimd ~ as.factor(partial_week), 
+             data = partial_es_data, 
+             index = "location", 
+             effect = "individual",
+             model = "within")
 
 ```
