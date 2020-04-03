@@ -420,7 +420,7 @@ Many thanks to Dylan Piatt and Zach Swaziek for their help with this. Feedback a
 Data+code are available here: https://docs.google.com/spreadsheets/d/1RN1XJLIpU12QUwMpkF0DNiV8fkeqdHbWHta2sRfEZT4/edit#gid=651560 and https://github.com/paulgp/GoogleTrendsUINowcast
 
 ### Latest Results
-  * We validate the model out-of-sample against official data released today. A model estimated only on outcome data prior to this week explains TBA share of variance in states’ reports for the week ending March 28.
+  * We validate the model out-of-sample against official data released today. A model estimated only on outcome data prior to this week explains 92.9 percent share of variance in states’ reports for the week ending March 28 (84.3 percent in log scale).
   * Extrapolating Google Trends data from 3/29-3/31 forward to the end of the week, we project `r round(report_output_text$predicted_ui_sa[3], digits = 1)` million UI claims, seasonally adjusted, with confidence intervals of `r round(report_output_text$predicted_ui_lb_sa[3], digits = 1)` and `r round(report_output_text$predicted_ui_ub_sa[3], digits = 1)` million.
 
 
