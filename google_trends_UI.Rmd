@@ -1301,12 +1301,12 @@ partial_es <- plm(hits ~ as.factor(daystopartial),
              model = "within")
 
 partial_coefs = as.data.frame(summary(partial_es)$coefficients[1:es_length])
-colnames(coefs)[1] <- "coeffecients"
+colnames(partial_coefs)[1] <- "coeffecients"
 partial_coefs$timefrompartial <- es_start:(es_end-1)
 partial_coefs$timefrompartial <- ifelse(partial_coefs$timefrompartial >=-1, partial_coefs$timefrompartial + 1, partial_coefs$timefrompartial)
 
 #Plot the event study
-partial_es_plot <- ggplot(data=coefs, aes(x=timefrompartial, y=coeffecients))+
+partial_es_plot <- ggplot(data=partial_coefs, aes(x=timefrompartial, y=coeffecients))+
   geom_line(,color = "darkgray") + 
   geom_vline(xintercept = 0, color = "cadetblue3", size = 1.5, alpha = .75) +
   labs(y = "Change in Google Search Intensity",
@@ -1359,7 +1359,7 @@ complete_es_plot
 
 #Plot one state with both policies as an example (add daily UI first)
 
-plotstate = "WI" #Change this to see another state
+plotstate = "CA" #Change this to see another state
 cares = as.Date("2020-03-27")
 
 #First merge in daily UI data
@@ -1400,11 +1400,6 @@ dailyuiplot_plotstate
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-#This all kind of ends up being useless-- should play around with more 
-
-
-#Now look at weekly search trends and UI data by week of policy adoption 
-
 #First bring in weekly claims data prior to COVID 
 weekly_UI_janthrumarch = as.data.frame(read_xlsx("data/UI_claims_jan1thrumarch21.xlsx"))
 names(weekly_UI_janthrumarch)[names(weekly_UI_janthrumarch) == "State"] <- "state"
@@ -1428,13 +1423,81 @@ weekly_UI_janthrumarch <- rbind(weekly_UI_janthrumarch, week13ui, by = "location
 #Merge with policy data at week-level
 weekly_claims_policy <- left_join(weekly_UI_janthrumarch, data_policy_states2[, c("partial_week", "complete_week", "location")], by = "location")
 
+#Filter out data before mid-Feb
 weekly_claims_policy <- weekly_claims_policy %>%
     group_by(location) %>%
     mutate(week = as.numeric(week)) %>%
     arrange(location ,week) %>%
     mutate(claims = as.numeric(claims))  %>%
-    mutate(claims_pchg = 100*(claims - dplyr::lag(claims))/dplyr::lag(claims)) %>%
-    filter(week >=9) 
+    filter(week >= 8)   %>%
+    filter(!is.na(location))
+
+#Reshape to wide
+weekly_claims_policy_wide1 <- subset(weekly_claims_policy, select = c("state", "week", "claims"))
+weekly_claims_policy_wide2 <- weekly_claims_policy %>% 
+    spread(week, claims) %>%
+    rename("week13" = "13") %>%
+    rename("week12" = "12") %>%
+    rename("week11" = "11") %>%
+    rename("week10" = "10") %>%
+    rename("week9" = "9") %>%
+    rename("week8" = "8") %>%
+    mutate(claims_postcovid = as.numeric(week11)+as.numeric(week12)+as.numeric(week13)) %>%
+    mutate(claims_precovid = as.numeric(week10)+as.numeric(week9)+as.numeric(week8)) %>%
+    mutate(claims_pchg = 100*((claims_postcovid - claims_precovid)/claims_precovid))  %>% 
+    mutate(region = tolower(state))
+
+###Map pct change in unemployment claims pre-covid to during-covid
+
+states <- map_data("state")
+claims_chg_map_data <- left_join(states, weekly_claims_policy_wide2, by = "region")
+
+#Do some stuff to get pattern overlaid on map for complete closures by 3/2
+nonessential_closure_states <- data_policy_states %>%
+  filter(!is.na(complete)) %>%
+  filter(complete <= "2020-03-28") %>%
+  mutate(region = tolower(state)) %>%
+  subset(select = region) 
+nonessential_closure_states <- as.data.frame(nonessential_closure_states)
+source("https://raw.githubusercontent.com/imaddowzimet/drawcrosshatch/master/draw_crosshatch.R") 
+claims_chg_map_data_completeclose <- claims_chg_map_data %>%
+  filter(region %in% nonessential_closure_states$region) %>%
+  group_by(group) %>% 
+  nest() 
+lines <- map_df(claims_chg_map_data_completeclose$data, draw.crosshatch, width = .3, pattern= "horizontal")
+
+#Make map
+ui_pctchg_map <- ggplot(claims_chg_map_data, aes(long, lat, group = group)) + 
+  geom_polygon(aes(fill = claims_pchg), color = "white") + 
+  geom_segment(data=lines, aes(x= x, y = y , xend = xend, yend = yend), 
+                    inherit.aes = F, color = "white", alpha = .6) +
+  labs(title="Percent Change in Initial UI Claims", 
+       subtitle = "Between 2/16-3/7 to 3/8-3/28") +
+  scale_fill_gradient2( 
+      high = "orangered3", na.value = "gray50",  
+      breaks = c(round(min(claims_chg_map_data$claims_pchg)),
+                round(max(claims_chg_map_data$claims_pchg)))) +
+  labs(caption = "Note: States with lines adopted a non-essential business closure order by 3/28.") +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank(),
+        axis.title.y=element_blank(), 
+        axis.title.x=element_blank(), 
+        legend.title=element_blank(),
+        legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5, size = 18),
+        plot.subtitle = element_text(hjust = 0.5, size = 14),
+        plot.caption = element_text(hjust = 0.5, size = 12))
+
+ui_pctchg_map
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+#This all kind of ends up being useless-- should play around with more 
+#Now look at weekly search trends and UI data by week of policy adoption 
 
 #There's really nothing interesting here. A few late-adopting states seem to have big increases in week 13, but I think this is more to do with technology issues (so claims were late). 
 
