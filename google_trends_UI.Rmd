@@ -1219,13 +1219,15 @@ complete_map <-
   ggplot(dates_map, aes(long, lat, group = group)) + 
   geom_polygon(aes(fill = factor(complete)), color = "white") + 
   ggtitle("Non-Essential Business Closure Orders") +
-  scale_fill_manual(values = colorRampPalette(brewer.pal(13, "BuPu"))(13), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(15, "BuPu"))(15), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
   theme(axis.text.x = element_blank(),
         axis.text.y = element_blank(),
         axis.ticks = element_blank(),
         rect = element_blank(),
         axis.title.y=element_blank(), 
-        axis.title.x=element_blank()) 
+        axis.title.x=element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 18)) 
+
 
 #Map of partial closure orders
 
@@ -1234,13 +1236,14 @@ takeout_map <-
   ggplot(dates_map, aes(long, lat, group = group)) + 
   geom_polygon(aes(fill = factor(partial)), color = "white") + 
   ggtitle("Prohibition on Dining In and Partial Closure Orders") +
-  scale_fill_manual(values = colorRampPalette(brewer.pal(13, "GnBu"))(13), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(15, "GnBu"))(15), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
   theme(axis.text.x = element_blank(),
         axis.text.y = element_blank(),
         axis.ticks = element_blank(),
         rect = element_blank(),
         axis.title.y=element_blank(), 
-        axis.title.x=element_blank()) 
+        axis.title.x=element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 18)) 
 
 ```
 
@@ -1313,7 +1316,7 @@ partial_es_plot <- ggplot(data=partial_coefs, aes(x=timefrompartial, y=coeffecie
        x = "Days from Partial Closure Order",
        title="Search Trends in Response to Partial Closures") +
   theme_classic(base_size=15) +
-  scale_x_continuous(breaks = seq(-7, 4, by = 1))
+  scale_x_continuous(breaks = seq(es_start, es_end, by = 1))
 
 #Event study around complete closure policies
 
@@ -1326,7 +1329,7 @@ complete_es_data <-
 complete_es_data <- within(complete_es_data, daystocomplete <- relevel(as.factor(daystocomplete), ref = 7))
 
 complete_es <- plm(hits ~ as.factor(daystocomplete), 
-             data = partial_es_data, 
+             data = complete_es_data, 
              index = "location", 
              effect = "individual",
              model = "within")
@@ -1344,12 +1347,13 @@ complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffe
        x = "Days from Complete Closure Order",
        title="Search Trends in Response to Complete Closures") +
   theme_classic(base_size=15) +
-  scale_x_continuous(breaks = seq(-7, 4, by = 1))
+  scale_x_continuous(breaks = seq(es_start, es_end, by = 1))
 
 
 
 partial_es_plot
 complete_es_plot
+
 
 ```
 
@@ -1359,7 +1363,7 @@ complete_es_plot
 
 #Plot one state with both policies as an example (add daily UI first)
 
-plotstate = "CA" #Change this to see another state
+plotstate = "NY" #Change this to see another state
 cares = as.Date("2020-03-27")
 
 #First merge in daily UI data
@@ -1432,6 +1436,11 @@ weekly_claims_policy <- weekly_claims_policy %>%
     filter(week >= 8)   %>%
     filter(!is.na(location))
 
+#Replace OR data manually 
+weekly_claims_policy_wide2[38, "week13"] <- 92700
+weekly_claims_policy_wide2[38, "week12"] <- 76500
+weekly_claims_policy_wide2[38, "week11"] <- 4900
+
 #Reshape to wide
 weekly_claims_policy_wide1 <- subset(weekly_claims_policy, select = c("state", "week", "claims"))
 weekly_claims_policy_wide2 <- weekly_claims_policy %>% 
@@ -1441,11 +1450,20 @@ weekly_claims_policy_wide2 <- weekly_claims_policy %>%
     rename("week11" = "11") %>%
     rename("week10" = "10") %>%
     rename("week9" = "9") %>%
-    rename("week8" = "8") %>%
+    rename("week8" = "8") 
+
+#Replace OR data manually (Oregon DOL economist asked me to run this map with updated data, commenting out)
+#weekly_claims_policy_wide2[38, "week13"] <- 92700
+#weekly_claims_policy_wide2[38, "week12"] <- 76500
+#weekly_claims_policy_wide2[38, "week11"] <- 4900
+
+weekly_claims_policy_wide2 <- weekly_claims_policy_wide2 %>% 
     mutate(claims_postcovid = as.numeric(week11)+as.numeric(week12)+as.numeric(week13)) %>%
     mutate(claims_precovid = as.numeric(week10)+as.numeric(week9)+as.numeric(week8)) %>%
     mutate(claims_pchg = 100*((claims_postcovid - claims_precovid)/claims_precovid))  %>% 
     mutate(region = tolower(state))
+
+
 
 ###Map pct change in unemployment claims pre-covid to during-covid
 
