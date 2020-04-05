@@ -1358,13 +1358,73 @@ complete_es_plot
 ```
 
 
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+#Graph average google search numbers over time (relative to policy enactment day), weighted by state labor force
+
+#First pull in state labor force data 
+labor_force_states = read_xlsx("data/labor_force_state.xlsx") 
+
+
+policy_search_lf <- left_join(policy_event_study, labor_force_states, by = "state")
+
+weightedhits_aroundpartial <- policy_search_lf %>%
+  group_by(daystopartial) %>%
+  summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>%
+  filter(daystopartial >= -7 & daystopartial <= 7) %>%
+  mutate(day = daystopartial) %>%
+  rename(hits_partial = hits)
+
+weightedhits_aroundcomplete <- policy_search_lf %>%
+  group_by(daystocomplete) %>%
+  summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>%
+  filter(daystocomplete >= -7 & daystocomplete <= 7) %>%
+  mutate(day = daystocomplete) %>%
+  rename(hits_complete = hits)
+
+weighthits_aroundpolicies <- left_join(weightedhits_aroundcomplete, weightedhits_aroundpartial, by = "day")
+
+ggplot(weightedhits_aroundpartial, aes(x = daystopartial, y = hits_partial)) + 
+  geom_line() + 
+  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "mediumpurple2") +
+  theme_classic(base_size=10) + 
+  labs(x = "Days from Partial Closure",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Partial Closure",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+  scale_x_continuous(breaks = seq(-7, 7, by = 1))
+
+ggplot(weightedhits_aroundcomplete, aes(x = daystocomplete, y = hits_complete)) + 
+  geom_line() + 
+  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "cadetblue3") +
+  theme_classic(base_size=10) + 
+  labs(x = "Days from Complete Closure",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Complete Closure",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+  scale_x_continuous(breaks = seq(-7, 7, by = 1))
+
+ggplot(weighthits_aroundpolicies) + 
+  geom_line(aes(x = day, y = hits_complete), color = "cadetblue3") + 
+  geom_line(aes(x = day, y = hits_partial), color = "mediumpurple2") + 
+  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "black") +
+  theme_classic(base_size=10) + 
+  labs(x = "Days from Complete Closure",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Complete Closure",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+  scale_x_continuous(breaks = seq(-7, 7, by = 1))
+  
+
+```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-#Plot one state with both policies as an example (add daily UI first)
+###Plot one state with both policies as an example (add daily UI first)
 
-plotstate = "NY" #Change this to see another state
-cares = as.Date("2020-03-27")
+#Set these to whatever you want!
+  plotstate = "NY" #Change this to see another state
+  cares = as.Date("2020-03-27")
 
 #First merge in daily UI data
   policy_event_study_withdailyui <- right_join(daily_UI_Claims, policy_event_study, by = c("location", "date"))
@@ -1403,6 +1463,9 @@ dailyuiplot_plotstate
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+###Map pct change in unemployment claims pre-covid to during-covid
+
 
 #First bring in weekly claims data prior to COVID 
 weekly_UI_janthrumarch = as.data.frame(read_xlsx("data/UI_claims_jan1thrumarch21.xlsx"))
@@ -1464,9 +1527,7 @@ weekly_claims_policy_wide2 <- weekly_claims_policy_wide2 %>%
     mutate(region = tolower(state))
 
 
-
-###Map pct change in unemployment claims pre-covid to during-covid
-
+#Set up shape files
 states <- map_data("state")
 claims_chg_map_data <- left_join(states, weekly_claims_policy_wide2, by = "region")
 
