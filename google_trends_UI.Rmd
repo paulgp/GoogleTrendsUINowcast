@@ -1368,37 +1368,19 @@ labor_force_states = read_xlsx("data/labor_force_state.xlsx")
 policy_search_lf <- left_join(policy_event_study, labor_force_states, by = "state")
 
 #Collapse hits for the days around policies, weighted by lf size
+policy_search_lf <-policy_search_lf %>% 
+  pivot_longer(
+    cols = c(daystopartial, daystocomplete),
+    names_to = "type",
+    values_to = "days"
+  ) %>% 
+  group_by(type, days) %>% 
+  summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>% 
+  filter(days >= -7 & days <= 7) 
 
-weightedhits_aroundpartial <- policy_search_lf %>%
-  group_by(daystopartial) %>%
-  summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>%
-  filter(daystopartial >= -7 & daystopartial <= 7) %>%
-  rename(day = daystopartial) %>%
-  rename(hits_partial = hits)
-
-weightedhits_aroundcomplete <- policy_search_lf %>%
-  group_by(daystocomplete) %>%
-  summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>%
-  filter(daystocomplete >= -7 & daystocomplete <= 7) %>%
-  rename(day = daystocomplete) %>%
-  rename(hits_complete = hits)
-
-weighthits_aroundpolicies <- left_join(weightedhits_aroundcomplete, weightedhits_aroundpartial, by = "day")
-
-ggplot(weighthits_aroundpolicies) + 
-  geom_line(aes(x = day, y = hits_complete), color = "cadetblue3") + 
-  geom_line(aes(x = day, y = hits_partial), color = "mediumpurple2") + 
-  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "black") +
-  theme_classic(base_size=10) + 
-  labs(x = "Days from Closure Effective Date",
-       y = "Google Search Intensity", 
-       title = "Average Search Intensity Around Time of Closures",
-       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
-  scale_x_continuous(breaks = seq(-7, 7, by = 1))
-  
 #Plot (first individually, then together)
-ggplot(weightedhits_aroundpartial, aes(x = daystopartial, y = hits_partial)) + 
-  geom_line() + 
+ggplot(data = policy_search_lf %>% filter(type == "daystopartial")) + 
+  geom_line(aes(x = days, y = hits), color = "gray") + 
   geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "mediumpurple2") +
   theme_classic(base_size=10) + 
   labs(x = "Days from Partial Closure",
@@ -1407,27 +1389,27 @@ ggplot(weightedhits_aroundpartial, aes(x = daystopartial, y = hits_partial)) +
        subtitle = "Weighted by size of states' labor force in Feb. 2020") +
   scale_x_continuous(breaks = seq(-7, 7, by = 1))
 
-ggplot(weightedhits_aroundcomplete, aes(x = daystocomplete, y = hits_complete)) + 
-  geom_line() + 
+ggplot(data = policy_search_lf %>% filter(type == "daystocomplete")) + 
+  geom_line(aes(x = days, y = hits), color = "gray") + 
   geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "cadetblue3") +
   theme_classic(base_size=10) + 
-  labs(x = "Days from Complete Closure",
+  labs(x = "Days from Partial Closure",
        y = "Google Search Intensity", 
-       title = "Average Search Intensity Around Time of Complete Closure",
+       title = "Average Search Intensity Around Time of Partial Closure",
        subtitle = "Weighted by size of states' labor force in Feb. 2020") +
   scale_x_continuous(breaks = seq(-7, 7, by = 1))
 
-ggplot(weighthits_aroundpolicies) + 
-  geom_line(aes(x = day, y = hits_complete), color = "cadetblue3") + 
-  geom_line(aes(x = day, y = hits_partial), color = "mediumpurple2") + 
-  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "black") +
+ggplot(policy_search_lf, aes(x = days, y = hits, group = type, color = type)) +
+  geom_line() + 
+  scale_color_manual(labels = c("Complete", "Partial"), values = c("cadetblue3", "mediumpurple2")) + 
+  geom_vline(aes(xintercept = 0), alpha = .3, size = 1.5, color = "black") +
   theme_classic(base_size=10) + 
   labs(x = "Days from Closure Effective Date",
        y = "Google Search Intensity", 
        title = "Average Search Intensity Around Time of Closures",
-       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+       subtitle = "Weighted by size of states' labor force in Feb. 2020", 
+       color = "Closure Type")+
   scale_x_continuous(breaks = seq(-7, 7, by = 1))
-  
 
 ```
 
