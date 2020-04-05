@@ -1360,13 +1360,15 @@ complete_es_plot
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-#Graph average google search numbers over time (relative to policy enactment day), weighted by state labor force
+###Graph average google search numbers over time (relative to policy enactment day), weighted by state labor force
 
 #First pull in state labor force data 
 labor_force_states = read_xlsx("data/labor_force_state.xlsx") 
 
-
+#Merge with policy data
 policy_search_lf <- left_join(policy_event_study, labor_force_states, by = "state")
+
+#Collapse hits for the days around policies, weighted by lf size
 
 weightedhits_aroundpartial <- policy_search_lf %>%
   group_by(daystopartial) %>%
@@ -1384,6 +1386,7 @@ weightedhits_aroundcomplete <- policy_search_lf %>%
 
 weighthits_aroundpolicies <- left_join(weightedhits_aroundcomplete, weightedhits_aroundpartial, by = "day")
 
+#Plot (first individually, then together)
 ggplot(weightedhits_aroundpartial, aes(x = daystopartial, y = hits_partial)) + 
   geom_line() + 
   geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "mediumpurple2") +
