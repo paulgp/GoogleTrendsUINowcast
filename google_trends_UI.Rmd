@@ -1201,19 +1201,22 @@ ggplot(data = evaluation) +
 
 ###### Liz doing state policy stuff #######
 
-data_policy_states = read_xlsx("data/covid_closures_by_state.xlsx") 
+###Make maps of timing of state policies ###
 
-data_policy_states <- mutate_at(data_policy_states, c("partial", "school", "complete"), funs(ymd)) %>%
+#Set up data
+
+##Import policy data
+data_policy_states <- read_xlsx("data/covid_closures_by_state.xlsx") %>%
+  mutate_at(c("partial", "school", "complete"), funs(ymd))%>%
   mutate(complete_week = epiweek(complete), partial_week = epiweek(partial), school_week = epiweek(school)) %>%
   mutate(complete_day = day(complete), partial_day = day(partial), school_day = day(school)) %>%
-  mutate(region = tolower(state))
+  mutate(region = tolower(state)) 
 
+##Add shape files
 states <- map_data("state")
-
 dates_map <- left_join(states, data_policy_states, by = "region")
 
 #Map of complete closure orders
-
 dates_map$complete <- format(dates_map$complete, format = "%m/%d")
 complete_map <- 
   ggplot(dates_map, aes(long, lat, group = group)) + 
@@ -1230,7 +1233,6 @@ complete_map <-
 
 
 #Map of partial closure orders
-
 dates_map$partial <- format(dates_map$partial, format = "%m/%d")
 takeout_map <- 
   ggplot(dates_map, aes(long, lat, group = group)) + 
@@ -1272,32 +1274,35 @@ Both of these definitions are consistent with analyzing policy effects on UI cla
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-#Set up data for event studies
-data_policy_states2 <- data_policy_states 
-names(data_policy_states2)[names(data_policy_states2) == "state_abbr"] <- "location"
-data_policy_states2 <- within(data_policy_states2, rm("notes", "region", "fips"))
+###Event Studies###
 
+#Set up data for event studies
+data_policy_states <- data_policy_states %>%
+  rename("location" = "state_abbr")
+
+##Merge policy data with google search data 
 policy_event_study <- left_join(data_states_short_combined, data_policy_states2, by = "location") %>% 
   filter(date > as.Date("2020-03-01") ) %>%
   mutate(daystopartial = difftime(date, partial , units = c("days")))  %>%
-  mutate(daystocomplete = difftime(date, complete , units = c("days")))
+  mutate(daystocomplete = difftime(date, complete , units = c("days"))) %>%
+  pivot_longer(
+    cols = c(daystopartial, daystocomplete),
+    names_to = "type",
+    values_to = "days"
+  ) 
 
-#Define event study pre and post length
+##Define event study pre and post length
 es_start = -7
 es_end = 4
 es_length = 11
 
-#Event study around partial closure policies
-partial_es_data <-
-  policy_event_study %>% 
-  drop_na(partial) %>% 
-  filter(daystopartial >= es_start & daystopartial <= es_end)
-
 ## This sets the baseline period to t-1, change by making ref = 8 for t0 or ref = 6 for t-2
-partial_es_data <- within(partial_es_data, daystopartial <- relevel(as.factor(daystopartial), ref = 7))
+policy_event_study <- within(policy_event_study, days_factor <- relevel(as.factor(days), ref = 7))
 
-partial_es <- plm(hits ~ as.factor(daystopartial), 
-             data = partial_es_data, 
+#Event study around partial closure policies
+partial_es <- plm(hits ~ as.factor(days_factor), 
+             data = subset(policy_event_study, type == "daystopartial"),
+             subset = days_factor %in% es_start:es_end,
              index = "location", 
              effect = "individual",
              model = "within")
@@ -1317,18 +1322,11 @@ partial_es_plot <- ggplot(data=partial_coefs, aes(x=timefrompartial, y=coeffecie
   theme_classic(base_size=15) +
   scale_x_continuous(breaks = seq(es_start, es_end, by = 1))
 
+
 #Event study around complete closure policies
-
-complete_es_data <-
-  policy_event_study %>% 
-  drop_na(complete) %>% 
-  filter(daystocomplete >= es_start & daystocomplete <= es_end)
-
-## This sets the baseline period to t-1, change by making ref = 8 for t0 or ref = 6 for t-2
-complete_es_data <- within(complete_es_data, daystocomplete <- relevel(as.factor(daystocomplete), ref = 7))
-
-complete_es <- plm(hits ~ as.factor(daystocomplete), 
-             data = complete_es_data, 
+complete_es <- plm(hits ~ as.factor(days_factor), 
+             data = subset(policy_event_study, type == "daystocomplete"),
+             subset = days %in% es_start:es_end,
              index = "location", 
              effect = "individual",
              model = "within")
@@ -1349,7 +1347,6 @@ complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffe
   scale_x_continuous(breaks = seq(es_start, es_end, by = 1))
 
 
-
 partial_es_plot
 complete_es_plot
 
@@ -1359,29 +1356,24 @@ complete_es_plot
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-###Graph average google search numbers over time (relative to policy enactment day), weighted by state labor force
+###Graph average google search numbers over time (relative to policy enactment day), weighted by state labor force###
 
-#First pull in state labor force data 
+#Set up data
+
+##First pull in state labor force data 
 labor_force_states = read_xlsx("data/labor_force_state.xlsx") 
 
-#Merge with policy data
-policy_search_lf <- left_join(policy_event_study, labor_force_states, by = "state")
-
-#Collapse hits for the days around policies, weighted by lf size
-policy_search_lf <-policy_search_lf %>% 
-  pivot_longer(
-    cols = c(daystopartial, daystocomplete),
-    names_to = "type",
-    values_to = "days"
-  ) %>% 
+##Merge with policy data
+policy_search_lf <- left_join(policy_event_study, labor_force_states, by = "state") %>% 
+  #Collapse hits for the days around policies, weighted by lf size
   group_by(type, days) %>% 
-  summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>% 
-  filter(days >= -7 & days <= 7) 
+  summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>%
+  filter(days %in% -7:7) 
 
-#Plot (first individually, then together)
+#Plot (first individviually, then together)
 ggplot(data = policy_search_lf %>% filter(type == "daystopartial")) + 
-  geom_line(aes(x = days, y = hits), color = "gray") + 
-  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "mediumpurple2") +
+  geom_line(aes(x = days, y = hits), color = "black") + 
+  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .5, size = 1.5, color = "mediumpurple2") +
   theme_classic(base_size=10) + 
   labs(x = "Days from Partial Closure",
        y = "Google Search Intensity", 
@@ -1390,8 +1382,8 @@ ggplot(data = policy_search_lf %>% filter(type == "daystopartial")) +
   scale_x_continuous(breaks = seq(-7, 7, by = 1))
 
 ggplot(data = policy_search_lf %>% filter(type == "daystocomplete")) + 
-  geom_line(aes(x = days, y = hits), color = "gray") + 
-  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .3, size = 1.5, color = "cadetblue3") +
+  geom_line(aes(x = days, y = hits), color = "black") + 
+  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .5, size = 1.5, color = "cadetblue3") +
   theme_classic(base_size=10) + 
   labs(x = "Days from Partial Closure",
        y = "Google Search Intensity", 
@@ -1399,29 +1391,35 @@ ggplot(data = policy_search_lf %>% filter(type == "daystocomplete")) +
        subtitle = "Weighted by size of states' labor force in Feb. 2020") +
   scale_x_continuous(breaks = seq(-7, 7, by = 1))
 
+labs <- setNames(c(" Partial", " Complete"), c("daystopartial", "daystocomplete"))
 ggplot(policy_search_lf, aes(x = days, y = hits, group = type, color = type)) +
   geom_line() + 
-  scale_color_manual(labels = c("Complete", "Partial"), values = c("cadetblue3", "mediumpurple2")) + 
   geom_vline(aes(xintercept = 0), alpha = .3, size = 1.5, color = "black") +
   theme_classic(base_size=10) + 
   labs(x = "Days from Closure Effective Date",
        y = "Google Search Intensity", 
        title = "Average Search Intensity Around Time of Closures",
        subtitle = "Weighted by size of states' labor force in Feb. 2020", 
-       color = "Closure Type")+
-  scale_x_continuous(breaks = seq(-7, 7, by = 1))
+       color = "Closure Type") +
+  scale_color_manual(values = c("cadetblue3", "mediumpurple2"), guide = FALSE) + 
+  scale_x_continuous(breaks = seq(-7, 7, by = 1)) +
+  geom_dl(aes(label=labs[type]), method="last.points") +
+  coord_cartesian(clip = "off") +
+  theme(plot.margin = margin(1, 45, 1, 1))
+
+ 
 
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-###Plot one state with both policies as an example (add daily UI first)
+###Plot one state with both policies as an example (add daily UI first)###
 
-#Set these to whatever you want!
-  plotstate = "NY" #Change this to see another state
+#Set these to whatever you want! note to liz: make this a function later
+  plotstate = "WI" #Change this to see another state
   cares = as.Date("2020-03-27")
 
-#First merge in daily UI data
+#Merge in daily UI data
   policy_event_study_withdailyui <- right_join(daily_UI_Claims, policy_event_study, by = c("location", "date"))
   policy_event_study_plotstate <- policy_event_study_withdailyui %>% 
     filter(location == plotstate)
@@ -1459,33 +1457,33 @@ dailyuiplot_plotstate
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-###Map pct change in unemployment claims pre-covid to during-covid
+###Map pct change in unemployment claims pre-covid to during-covid###
 
+#Set up data
 
-#First bring in weekly claims data prior to COVID 
-weekly_UI_janthrumarch = as.data.frame(read_xlsx("data/UI_claims_jan1thrumarch21.xlsx"))
-names(weekly_UI_janthrumarch)[names(weekly_UI_janthrumarch) == "State"] <- "state"
-names(weekly_UI_janthrumarch)[names(weekly_UI_janthrumarch) == "Filed week ended"] <- "week"
-names(weekly_UI_janthrumarch)[names(weekly_UI_janthrumarch) == "Initial Claims"] <- "claims"
-weekly_UI_janthrumarch <- mutate_at(weekly_UI_janthrumarch, "week", funs(ymd)) %>%
-  mutate(week = epiweek(week)) 
-weekly_UI_janthrumarch <- subset(weekly_UI_janthrumarch, select = c("state", "week", "claims"))
+##First bring in weekly claims data prior to COVID 
+weekly_UI_janthrumarch = as.data.frame(read_xlsx("data/UI_claims_jan1thrumarch21.xlsx")) %>%
+  rename("state" = "State") %>%
+  rename("week" = "Filed week ended") %>%
+  rename("claims" = "Initial Claims") %>%
+  mutate_at("week", funs(ymd)) %>%
+  mutate(week = epiweek(week)) %>%
+  subset(select = c("state", "week", "claims")) %>%
+  left_join(data_policy_states2[, c("state", "location")], by = "state")
 
-weekly_UI_janthrumarch <- left_join(weekly_UI_janthrumarch, data_policy_states2[, c("state", "location")], by = "state")
+##Clean data from week ending March 28 (4/2/20 news release) !! Will need to update weekly with new data pull
+week13ui <- subset(UI_Claims_March28_True, select = c("location", "advance_0322")) %>%
+  mutate(week = 13) %>%
+  rename("claims" = "advance_0322") %>%
+  left_join(data_policy_states2[, c("state", "location")], by = "location")
 
-#Clean data from week ending March 28 (4/2/20 news release)
-week13ui <- subset(UI_Claims_March28_True, select = c("location", "advance_0322"))
-week13ui$week <- 13
-names(week13ui)[names(week13ui) == "advance_0322"] <- "claims"
-week13ui <- left_join(week13ui, data_policy_states2[, c("state", "location")], by = "location")
-
-#Merge together to get all weekly UI data available
+##Merge together to get all weekly UI data available
 weekly_UI_janthrumarch <- rbind(weekly_UI_janthrumarch, week13ui, by = "location")
 
-#Merge with policy data at week-level
+##Merge with policy data at week-level
 weekly_claims_policy <- left_join(weekly_UI_janthrumarch, data_policy_states2[, c("partial_week", "complete_week", "location")], by = "location")
 
-#Filter out data before mid-Feb
+##Filter out data before mid-Feb
 weekly_claims_policy <- weekly_claims_policy %>%
     group_by(location) %>%
     mutate(week = as.numeric(week)) %>%
@@ -1494,14 +1492,8 @@ weekly_claims_policy <- weekly_claims_policy %>%
     filter(week >= 8)   %>%
     filter(!is.na(location))
 
-#Replace OR data manually 
-weekly_claims_policy_wide2[38, "week13"] <- 92700
-weekly_claims_policy_wide2[38, "week12"] <- 76500
-weekly_claims_policy_wide2[38, "week11"] <- 4900
-
-#Reshape to wide
-weekly_claims_policy_wide1 <- subset(weekly_claims_policy, select = c("state", "week", "claims"))
-weekly_claims_policy_wide2 <- weekly_claims_policy %>% 
+##Reshape to wide
+weekly_claims_policy_wide <- weekly_claims_policy %>% 
     spread(week, claims) %>%
     rename("week13" = "13") %>%
     rename("week12" = "12") %>%
@@ -1511,18 +1503,18 @@ weekly_claims_policy_wide2 <- weekly_claims_policy %>%
     rename("week8" = "8") 
 
 #Replace OR data manually (Oregon DOL economist asked me to run this map with updated data, commenting out)
-#weekly_claims_policy_wide2[38, "week13"] <- 92700
-#weekly_claims_policy_wide2[38, "week12"] <- 76500
-#weekly_claims_policy_wide2[38, "week11"] <- 4900
+  #weekly_claims_policy_wide2[38, "week13"] <- 92700
+  #weekly_claims_policy_wide2[38, "week12"] <- 76500
+  #weekly_claims_policy_wide2[38, "week11"] <- 4900
 
-weekly_claims_policy_wide2 <- weekly_claims_policy_wide2 %>% 
+## Generate percent change in claims (3 week moving average)
+weekly_claims_policy_wide <- weekly_claims_policy_wide %>% 
     mutate(claims_postcovid = as.numeric(week11)+as.numeric(week12)+as.numeric(week13)) %>%
     mutate(claims_precovid = as.numeric(week10)+as.numeric(week9)+as.numeric(week8)) %>%
     mutate(claims_pchg = 100*((claims_postcovid - claims_precovid)/claims_precovid))  %>% 
     mutate(region = tolower(state))
 
-
-#Set up shape files
+##Set up shape files
 states <- map_data("state")
 claims_chg_map_data <- left_join(states, weekly_claims_policy_wide2, by = "region")
 
@@ -1533,7 +1525,7 @@ nonessential_closure_states <- data_policy_states %>%
   mutate(region = tolower(state)) %>%
   subset(select = region) 
 nonessential_closure_states <- as.data.frame(nonessential_closure_states)
-source("https://raw.githubusercontent.com/imaddowzimet/drawcrosshatch/master/draw_crosshatch.R") 
+source("https://raw.githubusercontent.com/imaddowzimet/drawcrosshatch/master/draw_crosshatch.R")
 claims_chg_map_data_completeclose <- claims_chg_map_data %>%
   filter(region %in% nonessential_closure_states$region) %>%
   group_by(group) %>% 
