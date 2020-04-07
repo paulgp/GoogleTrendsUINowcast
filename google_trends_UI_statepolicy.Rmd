@@ -112,7 +112,7 @@ Both of these definitions are consistent with analyzing policy effects on UI cla
 #Set up data for event studies
 
 ##Merge policy data with google search data 
-policy_event_study <- left_join(data_states_short, data_policy_states, by = "location") %>% 
+policy_event_study <- left_join(data_states_short, data_policy_states, by = "location") %>%
   filter(date > as.Date("2020-03-01") ) %>%
   mutate(daystopartial = difftime(date, partial , units = c("days")))  %>%
   mutate(daystocomplete = difftime(date, complete , units = c("days"))) %>%
@@ -189,6 +189,7 @@ complete_es_plot
 
 ###Graph average google search numbers over time (relative to policy enactment day), weighted by state labor force###
 
+#!! Before Paul's 4/6 email
 #Set up data
 
 ##First pull in state labor force data 
@@ -238,6 +239,141 @@ ggplot(policy_search_lf, aes(x = days, y = hits, group = type, color = type)) +
   coord_cartesian(clip = "off") +
   theme(plot.margin = margin(1, 45, 1, 1))
 
+ 
+
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+###Graph average google search numbers over time (relative to policy enactment day), weighted by state labor force###
+#Based on Paul's 4/6 email: 
+#Partial Treatment States:
+data_policy_states %>% 
+  filter(partial <= as.Date("2020-03-16")) %>%
+  subset(select = state)
+#Partial Control States:       
+data_policy_states %>% 
+  filter(is.na(partial) | partial >= as.Date("2020-03-24")) %>%
+  subset(select = state)     
+
+#Complete Treatment States:
+data_policy_states %>% 
+  filter(complete <= as.Date("2020-03-23")) %>%
+  subset(select = state)
+#Complete Control States:       
+data_policy_states %>% 
+  filter(is.na(complete) | complete >= as.Date("2020-03-31")) %>%
+  subset(select = state)      
+
+
+
+##Set up data
+policy_search_lf_filtered1 <- data_policy_states %>%
+  #Filter to treatment and control
+    mutate(complete_treatment = case_when(
+                          complete <= as.Date("2020-03-23") ~ 1,
+                          complete >= as.Date("2020-03-31") ~ 0,
+                          complete = is.na(complete) ~ 0)) %>%
+    mutate(partial_treatment = case_when(
+                          partial <= as.Date("2020-03-16") ~ 1,
+                          partial >= as.Date("2020-03-24") ~ 0,
+                          partial = is.na(partial) ~ 0)) %>%
+    filter(!is.na(partial_treatment) | !is.na(complete_treatment)) %>%
+    mutate(partial_treatment = as.factor(partial_treatment)) %>%
+    mutate(complete_treatment = as.factor(complete_treatment)) %>%
+  #Add in google search data
+    left_join(data_states_short, by = "location") %>%
+  #Filter out lots of pre-data
+    filter(date > as.Date("2020-03-10") ) %>%
+  #Reshape for graphs later
+    pivot_longer(
+      cols = c(complete_treatment, partial_treatment),
+      names_to = "group",
+      values_to = "treatment",
+      names_repair = "minimal") %>%
+  #Merge in labor force data for weighting 
+    left_join(labor_force_states, by = "state") %>% 
+  #Collapse hits by date by group, weighted by lf size
+    group_by(date, group, treatment) %>% 
+    summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>%
+  #Remove lines that aren't treatment or control
+    filter(!is.na(treatment))
+
+#Plot (separately)
+ggplot(data = policy_search_lf_filtered1 %>% filter(group == "partial_treatment")) + 
+  geom_line(aes(x = date, y = hits, group = treatment, color = treatment)) + 
+  annotate("rect", xmin = min(data_policy_states$partial, na.rm = T), xmax = as.Date("2020-03-16"), min = 0, ymax = Inf, alpha = .2, fill = "mediumpurple2") + 
+  theme_classic(base_size=10) + 
+  labs(x = "Date",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Partial Closure",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+  scale_color_manual(values = c("black", "mediumpurple2"), guide = FALSE) +
+  scale_x_date(date_breaks = "2 days", 
+                 date_labels = "%m-%d",
+                 limits = as.Date(c("2020-03-10","2020-03-24")))
+
+
+ggplot(data = policy_search_lf_filtered1 %>% filter(group == "complete_treatment")) + 
+  geom_line(aes(x = date, y = hits, group = treatment, color = treatment)) + 
+  annotate("rect", xmin = min(data_policy_states$complete, na.rm = T), xmax = as.Date("2020-03-23"), min = 0, ymax = Inf, alpha = .2, fill = "cadetblue3") + 
+  theme_classic(base_size=10) + 
+  labs(x = "Date",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Complete Closure",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+  scale_color_manual(values = c("black", "cadetblue3"), guide = FALSE) +
+  scale_x_date(date_breaks = "2 days", 
+                 date_labels = "%m-%d",
+                 limits = as.Date(c("2020-03-10","2020-03-31")))
+
+
+##Set up data !! This time, allow 3 treatment groups: 23rd, 24th, and 25th enactors, and control group is states who don't enact by 4/1  and only do for complete
+policy_search_lf_filtered2 <- data_policy_states %>%
+  #Filter to treatment and control
+    mutate(complete_treatment = case_when(
+                          complete == as.Date("2020-03-23") ~ "23rd",
+                          complete == as.Date("2020-03-24") ~ "24th",
+                          complete == as.Date("2020-03-25") ~ "25th",
+                          complete >= as.Date("2020-04-02") ~ "Control",
+                          complete = is.na(complete) ~ "Control")) %>%
+    filter(!is.na(complete_treatment)) %>%
+  #Add in google search data
+    left_join(data_states_short, by = "location") %>%
+  #Filter out lots of pre-data
+    filter(date > as.Date("2020-03-10") ) %>%
+  #Compute days to each policy
+    mutate(daystocomplete = difftime(date, complete , units = c("days"))) %>%
+  #Reshape for graphs later
+    pivot_longer(
+      cols = c(complete_treatment),
+      names_to = "group",
+      values_to = "treatment",
+      names_repair = "minimal") %>%
+  #Merge in labor force data for weighting 
+    left_join(labor_force_states, by = "state") %>% 
+  #Collapse hits by date by group, weighted by lf size
+    group_by(date, group, treatment) %>% 
+    summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>%
+  #Remove lines that aren't treatment or control
+    filter(!is.na(treatment))
+
+ggplot(data = policy_search_lf_filtered2) + 
+  geom_line(aes(x = date, y = hits, group = treatment, color = treatment)) + 
+  annotate("rect", xmin = as.Date("2020-03-23 00:00:00"), xmax = as.Date("2020-03-24 00:00:00"), min = 0, ymax = Inf, alpha = .2, fill = "palevioletred") + 
+    annotate("rect", xmin = as.Date("2020-03-24 00:00:00"), xmax = as.Date("2020-03-25 00:00:00"), min = 0, ymax = Inf, alpha = .2, fill = "dodgerblue") + 
+  annotate("rect", xmin = as.Date("2020-03-25 00:00:00"), xmax = as.Date("2020-03-26 00:00:00"), min = 0, ymax = Inf, alpha = .2, fill = "seagreen4") + 
+
+  theme_classic(base_size=10) + 
+  labs(x = "Date",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Complete Closure",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+  scale_color_manual(values = c("palevioletred", "dodgerblue", "seagreen4", "black"), labels = c("23rd", "24th", "25th", "Control"), name = "Group") +
+  scale_x_date(date_breaks = "2 days", 
+                 date_labels = "%m-%d",
+                 limits = as.Date(c("2020-03-10","2020-03-31")))
  
 
 ```
