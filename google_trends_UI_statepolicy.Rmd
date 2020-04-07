@@ -41,7 +41,9 @@ data_policy_states <- read_xlsx("data/covid_closures_by_state.xlsx") %>%
   mutate_at(c("partial", "school", "complete"), funs(ymd))%>%
   mutate(complete_week = epiweek(complete), partial_week = epiweek(partial), school_week = epiweek(school)) %>%
   mutate(complete_day = day(complete), partial_day = day(partial), school_day = day(school)) %>%
-  mutate(region = tolower(state)) 
+  mutate(region = tolower(state)) %>%
+  rename("location" = "state_abbr")
+
 
 ##Add shape files
 states <- map_data("state")
@@ -108,11 +110,9 @@ Both of these definitions are consistent with analyzing policy effects on UI cla
 ###Event Studies###
 
 #Set up data for event studies
-data_policy_states <- data_policy_states %>%
-  rename("location" = "state_abbr")
 
 ##Merge policy data with google search data 
-policy_event_study <- left_join(data_states_short_combined, data_policy_states, by = "location") %>% 
+policy_event_study <- left_join(data_states_short, data_policy_states, by = "location") %>% 
   filter(date > as.Date("2020-03-01") ) %>%
   mutate(daystopartial = difftime(date, partial , units = c("days")))  %>%
   mutate(daystocomplete = difftime(date, complete , units = c("days"))) %>%
