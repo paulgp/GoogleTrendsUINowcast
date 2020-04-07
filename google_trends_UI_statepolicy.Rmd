@@ -1,0 +1,412 @@
+---
+title: "google_trends_UI_statepolicy"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# if (!require("devtools")) install.packages("devtools")
+# devtools::install_github("paulgp/gtrendsR")
+
+#install.packages("RApiDatetime")
+
+library(gtrendsR)
+library(tidyverse)
+library(ggrepel)
+library(RApiDatetime)
+library(lubridate)
+library(zoo)
+library(knitr)
+library(kableExtra)
+library(readxl)
+library(janitor)
+library(RColorBrewer)
+library(data.table)
+library(plm)
+library(directlabels)
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+###### Liz doing state policy stuff #######
+
+###Make maps of timing of state policies ###
+
+#Set up data
+
+##Import policy data
+data_policy_states <- read_xlsx("data/covid_closures_by_state.xlsx") %>%
+  mutate_at(c("partial", "school", "complete"), funs(ymd))%>%
+  mutate(complete_week = epiweek(complete), partial_week = epiweek(partial), school_week = epiweek(school)) %>%
+  mutate(complete_day = day(complete), partial_day = day(partial), school_day = day(school)) %>%
+  mutate(region = tolower(state)) 
+
+##Add shape files
+states <- map_data("state")
+dates_map <- left_join(states, data_policy_states, by = "region")
+
+#Map of complete closure orders
+dates_map$complete <- format(dates_map$complete, format = "%m/%d")
+complete_map <- 
+  ggplot(dates_map, aes(long, lat, group = group)) + 
+  geom_polygon(aes(fill = factor(complete)), color = "white") + 
+  ggtitle("Non-Essential Business Closure Orders") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(15, "BuPu"))(15), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank(),
+        axis.title.y=element_blank(), 
+        axis.title.x=element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 18)) 
+
+
+#Map of partial closure orders
+dates_map$partial <- format(dates_map$partial, format = "%m/%d")
+takeout_map <- 
+  ggplot(dates_map, aes(long, lat, group = group)) + 
+  geom_polygon(aes(fill = factor(partial)), color = "white") + 
+  ggtitle("Prohibition on Dining In and Partial Closure Orders") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(15, "GnBu"))(15), name = "Effective Date", na.value = "grey50", guide = "legend", drop = "TRUE") +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank(),
+        axis.title.y=element_blank(), 
+        axis.title.x=element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 18)) 
+
+```
+
+# State Policy Actions
+
+In recent weeks, Governors across the US have issued executive orders requiring that businesses change or limit their in-person operations. In most states, restaurants are only permitted to operate take-out and/or delivery services. While some restaurants have opted to stay open and attempt to weather the storm with reduced operations, others have shut down entirely. This has resulted in mass layoffs in the food service industry across the country, contributing to the skyrocketing UI claims numbers. 
+
+Further, in some states, Governors have called for all non-essential businesses to close. Many shops and malls, theaters and museums, gyms and yoga studios, and concert halls and clubs have been ordered to cease operations. While some businesses can scale up their e-commerce operations or survive on take-out orders alone, many are forced to lay off their workers. 
+
+The timing of states' closure orders have varied, so we've put together some maps to show the timin
+
+##Orders Affecting Business Operations and Closures
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+complete_map
+takeout_map
+```
+
+We define partial closures as orders that prohibited restaurants from having patrons dine in. In many states, other provisions were included in these orders (e.g., limits on gathering sizes, requirements for bars/clubs to close). We use the switch to take-out only for consistency. 
+
+We define complete closures as orders for non-essential businesses to close. States vary in their definitions of essential businesses, and some states also put stay at home or shelter in place orders. For consistency, we hone in specifically on the non-essential business closures. 
+
+Both of these definitions are consistent with analyzing policy effects on UI claims and search activity -- as businesses close, layoffs increase. 
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+###Event Studies###
+
+#Set up data for event studies
+data_policy_states <- data_policy_states %>%
+  rename("location" = "state_abbr")
+
+##Merge policy data with google search data 
+policy_event_study <- left_join(data_states_short_combined, data_policy_states, by = "location") %>% 
+  filter(date > as.Date("2020-03-01") ) %>%
+  mutate(daystopartial = difftime(date, partial , units = c("days")))  %>%
+  mutate(daystocomplete = difftime(date, complete , units = c("days"))) %>%
+  pivot_longer(
+    cols = c(daystopartial, daystocomplete),
+    names_to = "type",
+    values_to = "days"
+  ) 
+
+##Define event study pre and post length
+es_start = -7
+es_end = 4
+es_length = 11
+
+## This sets the baseline period to t-1, change by making ref = 8 for t0 or ref = 6 for t-2
+policy_event_study <- within(policy_event_study, days_factor <- relevel(as.factor(days), ref = 7))
+
+#Event study around partial closure policies
+partial_es <- plm(hits ~ as.factor(days_factor), 
+             data = subset(policy_event_study, type == "daystopartial"),
+             subset = days_factor %in% es_start:es_end,
+             index = "location", 
+             effect = "individual",
+             model = "within")
+
+partial_coefs = as.data.frame(summary(partial_es)$coefficients[1:es_length])
+colnames(partial_coefs)[1] <- "coeffecients"
+partial_coefs$timefrompartial <- es_start:(es_end-1)
+partial_coefs$timefrompartial <- ifelse(partial_coefs$timefrompartial >=-1, partial_coefs$timefrompartial + 1, partial_coefs$timefrompartial)
+
+#Plot the event study
+partial_es_plot <- ggplot(data=partial_coefs, aes(x=timefrompartial, y=coeffecients))+
+  geom_line(,color = "darkgray") + 
+  geom_vline(xintercept = 0, color = "cadetblue3", size = 1.5, alpha = .75) +
+  labs(y = "Change in Google Search Intensity",
+       x = "Days from Partial Closure Order",
+       title="Search Trends in Response to Partial Closures") +
+  theme_classic(base_size=15) +
+  scale_x_continuous(breaks = seq(es_start, es_end, by = 1))
+
+
+#Event study around complete closure policies
+complete_es <- plm(hits ~ as.factor(days_factor), 
+             data = subset(policy_event_study, type == "daystocomplete"),
+             subset = days %in% es_start:es_end,
+             index = "location", 
+             effect = "individual",
+             model = "within")
+
+complete_coefs <- as.data.frame(summary(complete_es)$coefficients[1:es_length])
+colnames(complete_coefs)[1] <- "coeffecients"
+complete_coefs$timefromcomplete <- es_start:(es_end-1)
+complete_coefs$timefromcomplete <- ifelse(complete_coefs$timefromcomplete >=-1, complete_coefs$timefromcomplete + 1, complete_coefs$timefromcomplete)
+
+#Plot the event study
+complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffecients))+
+  geom_line(,color = "darkgray") + 
+  geom_vline(xintercept = 0, color = "mediumpurple2", size = 1.5, alpha = .75) +
+  labs(y = "Change in Google Search Intensity",
+       x = "Days from Complete Closure Order",
+       title="Search Trends in Response to Complete Closures") +
+  theme_classic(base_size=15) +
+  scale_x_continuous(breaks = seq(es_start, es_end, by = 1))
+
+
+partial_es_plot
+complete_es_plot
+
+
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+###Graph average google search numbers over time (relative to policy enactment day), weighted by state labor force###
+
+#Set up data
+
+##First pull in state labor force data 
+labor_force_states = read_xlsx("data/labor_force_state.xlsx") 
+
+##Merge with policy data
+policy_search_lf <- left_join(policy_event_study, labor_force_states, by = "state") %>% 
+  #Collapse hits for the days around policies, weighted by lf size
+  group_by(type, days) %>% 
+  summarize_at("hits", list(weighted.mean), weight = "lf_022020") %>%
+  filter(days %in% -7:7) 
+
+#Plot (first individviually, then together)
+ggplot(data = policy_search_lf %>% filter(type == "daystopartial")) + 
+  geom_line(aes(x = days, y = hits), color = "black") + 
+  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .5, size = 1.5, color = "mediumpurple2") +
+  theme_classic(base_size=10) + 
+  labs(x = "Days from Partial Closure",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Partial Closure",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+  scale_x_continuous(breaks = seq(-7, 7, by = 1))
+
+ggplot(data = policy_search_lf %>% filter(type == "daystocomplete")) + 
+  geom_line(aes(x = days, y = hits), color = "black") + 
+  geom_vline(aes(xintercept = 0, show.guide = TRUE), alpha = .5, size = 1.5, color = "cadetblue3") +
+  theme_classic(base_size=10) + 
+  labs(x = "Days from Partial Closure",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Partial Closure",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020") +
+  scale_x_continuous(breaks = seq(-7, 7, by = 1))
+
+labs <- setNames(c(" Partial", " Complete"), c("daystopartial", "daystocomplete"))
+ggplot(policy_search_lf, aes(x = days, y = hits, group = type, color = type)) +
+  geom_line() + 
+  geom_vline(aes(xintercept = 0), alpha = .3, size = 1.5, color = "black") +
+  theme_classic(base_size=10) + 
+  labs(x = "Days from Closure Effective Date",
+       y = "Google Search Intensity", 
+       title = "Average Search Intensity Around Time of Closures",
+       subtitle = "Weighted by size of states' labor force in Feb. 2020", 
+       color = "Closure Type") +
+  scale_color_manual(values = c("cadetblue3", "mediumpurple2"), guide = FALSE) + 
+  scale_x_continuous(breaks = seq(-7, 7, by = 1)) +
+  geom_dl(aes(label=labs[type]), method="last.points") +
+  coord_cartesian(clip = "off") +
+  theme(plot.margin = margin(1, 45, 1, 1))
+
+ 
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+###Plot one state with both policies as an example (add daily UI first)###
+
+#Set these to whatever you want! note to liz: make this a function later
+  plotstate = "WI" #Change this to see another state
+  cares = as.Date("2020-03-27")
+
+#Merge in daily UI data
+  policy_event_study_withdailyui <- right_join(daily_UI_Claims, policy_event_study, by = c("location", "date"))
+  policy_event_study_plotstate <- policy_event_study_withdailyui %>% 
+    filter(location == plotstate)
+
+#Plot daily trends data
+dailygoogleplot_plotstate <- ggplot(data = policy_event_study_plotstate, aes(x=date, y=hits)) + 
+  geom_line(,color = "darkgray") + 
+  geom_vline(aes(xintercept = mean(partial), color = "Partial Closure"), show.guide = TRUE, alpha = .75, size = 1.5) + 
+  geom_vline(aes(xintercept = mean(complete), color = "Complete Closure"), show.guide = TRUE, alpha = .75, size = 1.5) +
+    geom_vline(aes(xintercept = cares, color = "CARES Act"), show.guide = TRUE, alpha = .75, size = 1.5) +
+    scale_color_manual(name = "Policies", values = c("Partial Closure" = "cadetblue3", "Complete Closure" = "mediumpurple2", "CARES Act" = "palegreen4")) +
+  theme_classic(base_size=10) + 
+  theme(legend.position = "bottom") +
+  labs(x = "Time",
+       y = "Google Search Trends", 
+       title = paste("Google Search Trends Over Time in", plotstate))
+
+#Plot daily UI claims with policies (this is pretty useless right now, because we don't have enough daily data)
+dailyuiplot_plotstate <- ggplot(data = policy_event_study_plotstate, aes(x=date, y=ui_claims_daily)) + 
+  geom_line(,color = "darkgray") + 
+  geom_vline(aes(xintercept = mean(partial), color = "Partial Closure"), show.guide = TRUE, alpha = .75, size = 1.5) + 
+  geom_vline(aes(xintercept = mean(complete), color = "Complete Closure"), show.guide = TRUE, alpha = .75, size = 1.5) +
+      geom_vline(aes(xintercept = cares, color = "CARES Act"), show.guide = TRUE, alpha = .75, size = 1.5) +
+    scale_color_manual(name = "Policies", values = c("Partial Closure" = "cadetblue3", "Complete Closure" = "mediumpurple2", "CARES Act" = "palegreen4")) +
+  theme_classic(base_size=10) + 
+  theme(legend.position = "bottom") +
+  labs(x = "Time",
+       y = "Daily UI Claims", 
+       title = paste("Daily UI Claims Over Time in", plotstate))
+
+dailygoogleplot_plotstate
+dailyuiplot_plotstate
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+###Map pct change in unemployment claims pre-covid to during-covid###
+
+#Set up data
+
+##First bring in weekly claims data prior to COVID 
+weekly_UI_janthrumarch = as.data.frame(read_xlsx("data/UI_claims_jan1thrumarch21.xlsx")) %>%
+  rename("state" = "State") %>%
+  rename("week" = "Filed week ended") %>%
+  rename("claims" = "Initial Claims") %>%
+  mutate_at("week", funs(ymd)) %>%
+  mutate(week = epiweek(week)) %>%
+  subset(select = c("state", "week", "claims")) %>%
+  left_join(data_policy_states[, c("state", "location")], by = "state")
+
+##Clean data from week ending March 28 (4/2/20 news release) !! Will need to update weekly with new data pull
+week13ui <- subset(UI_Claims_March28_True, select = c("location", "advance_0322")) %>%
+  mutate(week = 13) %>%
+  rename("claims" = "advance_0322") %>%
+  left_join(data_policy_states[, c("state", "location")], by = "location")
+
+##Merge together to get all weekly UI data available
+weekly_UI_janthrumarch <- rbind(weekly_UI_janthrumarch, week13ui, by = "location")
+
+##Merge with policy data at week-level
+weekly_claims_policy <- left_join(weekly_UI_janthrumarch, data_policy_states[, c("partial_week", "complete_week", "location")], by = "location")
+
+##Filter out data before mid-Feb
+weekly_claims_policy <- weekly_claims_policy %>%
+    group_by(location) %>%
+    mutate(week = as.numeric(week)) %>%
+    arrange(location ,week) %>%
+    mutate(claims = as.numeric(claims))  %>%
+    filter(week >= 8)   %>%
+    filter(!is.na(location))
+
+##Reshape to wide
+weekly_claims_policy_wide <- weekly_claims_policy %>% 
+    spread(week, claims) %>%
+    rename("week13" = "13") %>%
+    rename("week12" = "12") %>%
+    rename("week11" = "11") %>%
+    rename("week10" = "10") %>%
+    rename("week9" = "9") %>%
+    rename("week8" = "8") 
+
+#Replace OR data manually (Oregon DOL economist asked me to run this map with updated data, commenting out)
+  #weekly_claims_policy_wide2[38, "week13"] <- 92700
+  #weekly_claims_policy_wide2[38, "week12"] <- 76500
+  #weekly_claims_policy_wide2[38, "week11"] <- 4900
+
+## Generate percent change in claims (3 week moving average)
+weekly_claims_policy_wide <- weekly_claims_policy_wide %>% 
+    mutate(claims_postcovid = as.numeric(week11)+as.numeric(week12)+as.numeric(week13)) %>%
+    mutate(claims_precovid = as.numeric(week10)+as.numeric(week9)+as.numeric(week8)) %>%
+    mutate(claims_pchg = 100*((claims_postcovid - claims_precovid)/claims_precovid))  %>% 
+    mutate(region = tolower(state))
+
+##Set up shape files
+states <- map_data("state")
+claims_chg_map_data <- left_join(states, weekly_claims_policy_wide, by = "region")
+
+#Do some stuff to get pattern overlaid on map for complete closures by 3/2
+nonessential_closure_states <- data_policy_states %>%
+  filter(!is.na(complete)) %>%
+  filter(complete <= "2020-03-28") %>%
+  mutate(region = tolower(state)) %>%
+  subset(select = region) 
+nonessential_closure_states <- as.data.frame(nonessential_closure_states)
+source("https://raw.githubusercontent.com/imaddowzimet/drawcrosshatch/master/draw_crosshatch.R")
+claims_chg_map_data_completeclose <- claims_chg_map_data %>%
+  filter(region %in% nonessential_closure_states$region) %>%
+  group_by(group) %>% 
+  nest() 
+lines <- map_df(claims_chg_map_data_completeclose$data, draw.crosshatch, width = .3, pattern= "horizontal")
+
+#Make map
+ui_pctchg_map <- ggplot(claims_chg_map_data, aes(long, lat, group = group)) + 
+  geom_polygon(aes(fill = claims_pchg), color = "white") + 
+  geom_segment(data=lines, aes(x= x, y = y , xend = xend, yend = yend), 
+                    inherit.aes = F, color = "white", alpha = .6) +
+  labs(title="Percent Change in Initial UI Claims", 
+       subtitle = "Between 2/16-3/7 to 3/8-3/28") +
+  scale_fill_gradient2( 
+      high = "orangered3", na.value = "gray50",  
+      breaks = c(round(min(claims_chg_map_data$claims_pchg)),
+                round(max(claims_chg_map_data$claims_pchg)))) +
+  labs(caption = "Note: States with lines adopted a non-essential business closure order by 3/28.") +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank(),
+        axis.title.y=element_blank(), 
+        axis.title.x=element_blank(), 
+        legend.title=element_blank(),
+        legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5, size = 18),
+        plot.subtitle = element_text(hjust = 0.5, size = 14),
+        plot.caption = element_text(hjust = 0.5, size = 12))
+
+ui_pctchg_map
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+#This all kind of ends up being useless-- should play around with more 
+#Now look at weekly search trends and UI data by week of policy adoption 
+
+#There's really nothing interesting here. A few late-adopting states seem to have big increases in week 13, but I think this is more to do with technology issues (so claims were late). 
+
+#ggplot(subset(weekly_claims_policy, complete_week == 13), aes(x = week, y = claims_pchg, color = state)) + geom_path()
+
+#ggplot(subset(weekly_claims_policy, complete_week == 12), aes(x = week, y = claims_pchg, color = state)) + geom_path()
+
+#ggplot(subset(weekly_claims_policy, partial_week == 12), aes(x = week, y = claims_pchg, color = state)) + geom_path()
+
+#ggplot(subset(weekly_claims_policy, partial_week == 13), aes(x = week, y = claims_pchg, color = state)) + geom_path()
+
+#ggplot(weekly_claims_policy, aes(x = week, y = claims_pchg, color = partial_week)) + geom_path()
+
+
+```
