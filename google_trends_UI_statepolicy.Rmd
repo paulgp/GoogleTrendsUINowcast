@@ -116,6 +116,9 @@ policy_event_study <- left_join(data_states_short, data_policy_states, by = "loc
   filter(date > as.Date("2020-03-01") ) %>%
   mutate(daystopartial = difftime(date, partial , units = c("days")))  %>%
   mutate(daystocomplete = difftime(date, complete , units = c("days"))) %>%
+  group_by(location) %>%
+  mutate(laghits=dplyr::lag(hits, order_by = location)) %>%
+  ungroup %>%
   pivot_longer(
     cols = c(daystopartial, daystocomplete),
     names_to = "type",
@@ -128,12 +131,13 @@ es_end = 4
 es_length = 11
 
 ## This sets the baseline period to t-1, change by making ref = 8 for t0 or ref = 6 for t-2
-policy_event_study <- within(policy_event_study, days_factor <- relevel(as.factor(days), ref = 7))
+policy_event_study_releveled <- policy_event_study %>%
+  filter(days %in% es_start:es_end) %>%
+  mutate(days_factor = relevel(as.factor(days), ref = 7)) 
 
 #Event study around partial closure policies
 partial_es <- plm(hits ~ as.factor(days_factor), 
-             data = subset(policy_event_study, type == "daystopartial"),
-             subset = days_factor %in% es_start:es_end,
+             data = subset(policy_event_study_releveled, type == "daystopartial"),
              index = "location", 
              effect = "individual",
              model = "within")
@@ -156,8 +160,7 @@ partial_es_plot <- ggplot(data=partial_coefs, aes(x=timefrompartial, y=coeffecie
 
 #Event study around complete closure policies
 complete_es <- plm(hits ~ as.factor(days_factor), 
-             data = subset(policy_event_study, type == "daystocomplete"),
-             subset = days %in% es_start:es_end,
+             data = subset(policy_event_study_releveled, type == "daystocomplete"),
              index = "location", 
              effect = "individual",
              model = "within")
@@ -170,13 +173,12 @@ complete_coefs$timefromcomplete <- ifelse(complete_coefs$timefromcomplete >=-1, 
 #Plot the event study
 complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffecients))+
   geom_line(,color = "darkgray") + 
-  geom_vline(xintercept = 0, color = "mediumpurple2", size = 1.5, alpha = .75) +
+  geom_vline(xintercept = 0, color = "cadetblue3", size = 1.5, alpha = .75) +
   labs(y = "Change in Google Search Intensity",
        x = "Days from Complete Closure Order",
        title="Search Trends in Response to Complete Closures") +
   theme_classic(base_size=15) +
   scale_x_continuous(breaks = seq(es_start, es_end, by = 1))
-
 
 partial_es_plot
 complete_es_plot
