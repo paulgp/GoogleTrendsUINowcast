@@ -150,7 +150,7 @@ partial_coefs$timefrompartial <- ifelse(partial_coefs$timefrompartial >=-1, part
 #Plot the event study
 partial_es_plot <- ggplot(data=partial_coefs, aes(x=timefrompartial, y=coeffecients))+
   geom_line(,color = "darkgray") + 
-  geom_vline(xintercept = 0, color = "cadetblue3", size = 1.5, alpha = .75) +
+  geom_vline(xintercept = 0, color = "mediumpurple2", size = 1.5, alpha = .75) +
   labs(y = "Change in Google Search Intensity",
        x = "Days from Partial Closure Order",
        title="Search Trends in Response to Partial Closures") +
