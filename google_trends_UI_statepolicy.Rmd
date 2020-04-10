@@ -142,13 +142,14 @@ partial_es <- plm(hits ~ as.factor(days_factor),
              effect = "individual",
              model = "within")
 
-partial_coefs = as.data.frame(summary(partial_es)$coefficients[1:es_length])
+partial_coefs = as.data.frame(summary(partial_es)$coefficients[1:es_length]) %>%
+  mutate(closuretype = "partial") 
 colnames(partial_coefs)[1] <- "coeffecients"
-partial_coefs$timefrompartial <- es_start:(es_end-1)
-partial_coefs$timefrompartial <- ifelse(partial_coefs$timefrompartial >=-1, partial_coefs$timefrompartial + 1, partial_coefs$timefrompartial)
+partial_coefs$timefromorder <- es_start:(es_end-1)
+partial_coefs$timefromorder <- ifelse(partial_coefs$timefromorder >=-1, partial_coefs$timefromorder + 1, partial_coefs$timefromorder)
 
 #Plot the event study
-partial_es_plot <- ggplot(data=partial_coefs, aes(x=timefrompartial, y=coeffecients))+
+partial_es_plot <- ggplot(data=partial_coefs, aes(x=timefromorder, y=coeffecients))+
   geom_line(,color = "darkgray") + 
   geom_vline(xintercept = 0, color = "mediumpurple2", size = 1.5, alpha = .75) +
   labs(y = "Change in Google Search Intensity",
@@ -165,13 +166,14 @@ complete_es <- plm(hits ~ as.factor(days_factor),
              effect = "individual",
              model = "within")
 
-complete_coefs <- as.data.frame(summary(complete_es)$coefficients[1:es_length])
+complete_coefs <- as.data.frame(summary(complete_es)$coefficients[1:es_length]) %>%
+  mutate(closuretype = "complete")
 colnames(complete_coefs)[1] <- "coeffecients"
-complete_coefs$timefromcomplete <- es_start:(es_end-1)
-complete_coefs$timefromcomplete <- ifelse(complete_coefs$timefromcomplete >=-1, complete_coefs$timefromcomplete + 1, complete_coefs$timefromcomplete)
+complete_coefs$timefromorder <- es_start:(es_end-1)
+complete_coefs$timefromorder <- ifelse(complete_coefs$timefromorder >=-1, complete_coefs$timefromorder + 1, complete_coefs$timefromorder)
 
 #Plot the event study
-complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffecients))+
+complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromorder, y=coeffecients))+
   geom_line(,color = "darkgray") + 
   geom_vline(xintercept = 0, color = "cadetblue3", size = 1.5, alpha = .75) +
   labs(y = "Change in Google Search Intensity",
@@ -179,6 +181,25 @@ complete_es_plot <- ggplot(data=complete_coefs, aes(x=timefromcomplete, y=coeffe
        title="Search Trends in Response to Complete Closures") +
   theme_classic(base_size=15) +
   scale_x_continuous(breaks = seq(es_start, es_end, by = 1))
+
+
+#Plot both event studies together 
+both_es_coefficients <- complete_coefs %>%
+  rbind(partial_coefs)
+labs <- setNames(c(" Partial", " Complete"), c("partial", "complete"))
+ggplot(both_es_coefficients, aes(x = timefromorder, y = coeffecients, group = closuretype, color = closuretype)) +
+  geom_line() + 
+  geom_vline(aes(xintercept = 0), alpha = .3, size = 1.5, color = "black") +
+  theme_classic(base_size=10) + 
+  labs(y = "Change in Google Search Intensity",
+       x = "Days from Closure Order", 
+       title = "Search Trends in Response to Closures",
+       color = "Closure Type") +
+  scale_color_manual(values = c("cadetblue3", "mediumpurple2"), guide = FALSE) + 
+  scale_x_continuous(breaks = seq(es_start,es_end, by = 1)) + 
+  geom_dl(aes(label=labs[closuretype]), method="last.points") +
+  coord_cartesian(clip = "off") +
+  theme(plot.margin = margin(1, 45, 1, 1))
 
 partial_es_plot
 complete_es_plot
