@@ -27,7 +27,15 @@ library(plm)
 library(directlabels)
 ```
 
+# State Policy Actions
 
+In recent weeks, Governors across the US have issued executive orders requiring that businesses change or limit their in-person operations. In most states, restaurants are only permitted to operate take-out and/or delivery services. While some restaurants have opted to stay open and attempt to weather the storm with reduced operations, others have shut down entirely. This has resulted in mass layoffs in the food service industry across the country, contributing to the skyrocketing UI claims numbers. 
+
+Further, in some states, Governors have called for all non-essential businesses to close. Many shops and malls, theaters and museums, gyms and yoga studios, and concert halls and clubs have been ordered to cease operations. While some businesses can scale up their e-commerce operations or survive on take-out orders alone, many are forced to lay off their workers. 
+
+The timing of states' closure orders have varied, so we've put together some maps to show the timing.
+
+##Orders Affecting Business Operations and Closures
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 ###### Liz doing state policy stuff #######
@@ -79,20 +87,6 @@ takeout_map <-
         axis.title.y=element_blank(), 
         axis.title.x=element_blank(),
         plot.title = element_text(hjust = 0.5, size = 18)) 
-
-```
-
-# State Policy Actions
-
-In recent weeks, Governors across the US have issued executive orders requiring that businesses change or limit their in-person operations. In most states, restaurants are only permitted to operate take-out and/or delivery services. While some restaurants have opted to stay open and attempt to weather the storm with reduced operations, others have shut down entirely. This has resulted in mass layoffs in the food service industry across the country, contributing to the skyrocketing UI claims numbers. 
-
-Further, in some states, Governors have called for all non-essential businesses to close. Many shops and malls, theaters and museums, gyms and yoga studios, and concert halls and clubs have been ordered to cease operations. While some businesses can scale up their e-commerce operations or survive on take-out orders alone, many are forced to lay off their workers. 
-
-The timing of states' closure orders have varied, so we've put together some maps to show the timin
-
-##Orders Affecting Business Operations and Closures
-
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 complete_map
 takeout_map
@@ -190,7 +184,7 @@ labs <- setNames(c(" Partial", " Complete"), c("partial", "complete"))
 ggplot(both_es_coefficients, aes(x = timefromorder, y = coeffecients, group = closuretype, color = closuretype)) +
   geom_line() + 
   geom_vline(aes(xintercept = 0), alpha = .3, size = 1.5, color = "black") +
-  theme_classic(base_size=10) + 
+  theme_classic(base_size=15) + 
   labs(y = "Change in Google Search Intensity",
        x = "Days from Closure Order", 
        title = "Search Trends in Response to Closures",
@@ -206,6 +200,8 @@ complete_es_plot
 
 
 ```
+
+
 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
