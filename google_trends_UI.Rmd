@@ -77,103 +77,59 @@ pull_data = function(loc, time_window, panel=FALSE) {
 
 ```{r load-data2, cache=TRUE, results='hide', show=FALSE, include=FALSE}
 #Create geography
-# location_vec = tibble::enframe(name = NULL,c(state.abb, "DC")) %>% mutate(geo = "US") %>%   unite(location, geo, value, sep="-")
-# 
-# # Loop multiple times and average, following Seth's paper
-# data_full = tibble()
-# for (j in seq(1,3)) {
-# panel_data = list()
-# for (i in seq(1,length(location_vec$location),4)) {
-#   if (i < 49) {
-#     panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+3)], time_window="2020-2-01 2020-4-02", panel=TRUE)
-#   }
-#   else {
-#      panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+2)], time_window="2020-2-01 2020-4-02", panel=TRUE)
-#   }
-#     # be polite
-#     Sys.sleep(.2)
-# }
-# 
-# panel_data_states = list()
-# for (i in seq(1,length(panel_data))) {
-#   panel_data_states[[i]] = panel_data[[i]]$state_data
-# }
-# 
-# # Parse data
-# data_states_short = bind_rows(panel_data_states) %>%
-#   mutate(location = substr(geo, 4,6)) %>%
-#   ungroup() %>%
-#   select(location, hits, date) %>%
-#   mutate(date = ymd(date)) %>%
-#   group_by(location, date) %>%
-#   arrange(location, date)
-# 
-# data_full = data_full %>% bind_rows(data_states_short)
-# Sys.sleep(10)
-# }
-# #
-# data_states_short = data_full %>% group_by(location, date) %>% summarize(hits = mean(hits))
-# ## We do this b/c otherwise Google Trends API shuts us off  (already blocked for today)
-# data_states_short %>% write_csv("data/data_states_2020_02_01_2020_03_31e.csv")
-#
+location_vec = tibble::enframe(name = NULL,c(state.abb, "DC")) %>% mutate(geo = "US") %>%   unite(location, geo, value, sep="-")
+today_date = format.Date(today(), format="%Y-%m-%d")
+# Loop multiple times and average, following Seth's paper
+data_full = tibble()
+for (j in seq(1,1)) {
+panel_data = list()
 
-data_states_short = read_csv("data/data_states_2020_02_01_2020_03_31e.csv") 
-data_states_short_recent =  read_csv("data/trends_Mar30_2pm.csv", skip = 2) %>% 
-  mutate(date = date(Time)) %>%  
-  gather(state_dirty, val, -date, -Time) %>%
-  separate(col = state_dirty, into = c(NA, "state_name"), sep = ":") %>%
-  mutate(state_name = trimws(state_name),
-         state_name = str_remove(state_name,"\\("),
-         state_name = str_remove(state_name,"\\)")) %>%
-  group_by(date, state_name) %>% 
-  summarize(hits = max(val)) %>%
-  mutate(state_name = case_when(startsWith(state_name, "California") ~ "California",
-                                TRUE ~ state_name)) %>%
-  group_by(state_name, date) %>% 
-  summarize(hits = mean(hits)) %>%
-  left_join(tibble(state_name = state.name, state = state.abb)) %>%
-  mutate(state = replace_na(state, "DC"))
+for (i in seq(1,length(location_vec$location),4)) {
+  if (i < 49) {
+    panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+3)], time_window=paste0(c("2020-2-01",today_date),collapse=" "), panel=TRUE)
+  }
+  else {
+     panel_data[[i]] = pull_data(loc = location_vec$location[i:(i+2)], time_window=paste0(c("2020-2-01",today_date),collapse=" "), panel=TRUE)
+  }
+    # be polite
+    Sys.sleep(.2)
+}
+
+panel_data_states = list()
+for (i in seq(1,length(panel_data))) {
+  panel_data_states[[i]] = panel_data[[i]]$state_data
+}
+
+# Parse data
+data_states_short = bind_rows(panel_data_states) %>%
+  mutate(location = substr(geo, 4,6)) %>%
+  ungroup() %>%
+  select(location, hits, date) %>%
+  mutate(date = ymd(date)) %>%
+  group_by(location, date) %>%
+  arrange(location, date)
+
+data_full = data_full %>% bind_rows(data_states_short)
+Sys.sleep(10)
+}
+#
+data_states_short = data_full %>% group_by(location, date) %>% summarize(hits = mean(hits))
+## We do this b/c otherwise Google Trends API shuts us off  (already blocked for today)
+data_states_short %>% write_csv("data/data_states_2020_02_01_2020_04_16a.csv")
+
+
+data_states_short = read_csv("data/data_states_2020_02_01_2020_04_16a.csv") 
+
   
 ```
 
 ```{r load-ntl-data, include=FALSE, cache=TRUE}
-national_trend =  pull_data(loc = c("US"), time_window="2020-2-01 2020-4-02", panel=TRUE)
+national_trend =  pull_data(loc = c("US"), time_window=paste0(c("2020-2-01", today_date), collapse= " "), panel=TRUE)
 national_trend = national_trend$state_data %>% filter(geo == "US")  %>% 
   mutate(location = "USA") %>%
   ungroup() %>%
   select(date, hits, location) %>% mutate(date = date(date))
-national_trend_recent = read_csv("data/ntl_03220328.csv") %>% mutate(date = date(datetime)) %>%
-  group_by(date) %>% summarize(hits = max(hits)) %>% mutate(location = "USA")
-national_trend_combined = national_trend %>% mutate(date = date(date)) %>%
-  filter(date >= ymd("2020-02-22")) %>%
-  full_join(national_trend_recent %>% rename(hits2 = hits)) %>%
-  group_by(location) %>%
-  mutate(max_new =  case_when(date == ymd("2020-03-24") ~ hits2),
-         max_new2 = max(max_new, na.rm=TRUE),
-         max_old =  case_when(date == ymd("2020-03-24") ~ hits),
-         max_old2 = max(max_old, na.rm=TRUE)) %>%
-  mutate(hits3 = hits2 * max_old2/(max_new2)) %>% 
-  mutate(hits = case_when(date > ymd("2020-03-24") ~ hits3,
-                                      TRUE ~ hits)) %>% 
-  select(date, hits, location) %>%
-  ungroup()
 
-data_states_short_combined = data_states_short %>% 
-  filter(date >= ymd("2020-02-22")) %>%  
-  full_join(data_states_short_recent %>% rename(hits2 = hits,
-                                                location = state)) %>%
-  group_by(location) %>%
-  mutate(max_new =  case_when(date == ymd("2020-03-24") ~ hits2),
-         max_new2 = max(max_new, na.rm=TRUE),
-         max_old =  case_when(date == ymd("2020-03-24") ~ hits),
-         max_old2 = max(max_old, na.rm=TRUE)) %>%
-  mutate(hits3 = hits2 * max_old2/(max_new2)) %>% 
-  mutate(hits = case_when(date > ymd("2020-03-24") ~ hits3,
-                                      TRUE ~ hits)) %>% 
-  select(-hits3, -hits2, -starts_with("max_old"), -starts_with("max_new"), -state_name) %>%
-  ungroup()
-
-#data_states_short = data_states_short_combined
 ```
 
 ```{r, include=FALSE, message=FALSE, warning=FALSE}
@@ -192,11 +148,13 @@ weekly_data3 = data_states_short %>% bind_rows(national_trend) %>%
   summarize(hits = mean(hits, na.rm= TRUE), date = max(date)) %>% filter(month(date) > 1)
 
 growth_rate_weekly = weekly_data %>% 
-   filter(week >= 8 & week < 15 ) %>%
+   filter(week >= 8 & week < 17 ) %>%
   select(location, hits = hits, week, date, dow) %>%
   mutate(late = case_when(week == 12 ~ "late",
                           week == 13 ~ "late_nyt",
                           week == 14 ~ "late_next",
+                          week == 15 ~ "late_next2",
+                          week == 16 ~ "late_next3",
                           TRUE ~ "early")) %>%
   group_by(location, late, dow) %>%
   summarize(hits = mean(hits, na.rm=TRUE)) %>%
@@ -204,8 +162,9 @@ growth_rate_weekly = weekly_data %>%
   mutate(rate = late/(early+1),
          diff = late - early)
 
-growth_rate_weekly2 = weekly_data2 %>% group_by(location) %>% 
-   filter(week >= 8 & week < 13) %>%
+growth_rate_weekly2 = weekly_data2 %>% 
+  group_by(location) %>% 
+  filter(week >= 8 & week < 13) %>%
   select(location, hits = hits, week, date) %>%
   mutate(late = case_when(week == 12 ~ "late",
                           TRUE ~ "early")) %>%
@@ -216,11 +175,13 @@ growth_rate_weekly2 = weekly_data2 %>% group_by(location) %>%
          diff = late - early)
 
 growth_rate_weekly3 = weekly_data3 %>% 
-   filter(week >= 8 & week < 15 ) %>%
+   filter(week >= 8 & week <= 16 ) %>%
   select(location, hits = hits, week, date) %>%
   mutate(late = case_when(week == 12 ~ "late",
                           week == 13 ~ "late_nyt",
                           week == 14 ~ "late_next",
+                          week == 15 ~ "late_next2",
+                          week == 16 ~ "late_next3",
                           TRUE ~ "early")) %>%
   group_by(location, late) %>%
   summarize(hits = mean(hits, na.rm=TRUE)) %>%
@@ -268,6 +229,19 @@ UI_Claims_March28_True <- read_excel("data/StateUIClaims03282020.xlsx", sheet = 
   select(location, `2 week total`, advance_0322, advance_0315, updated_0315) %>%
   mutate(location = replace_na(location, "DC"))
 
+UI_Claims_April04_True <- read_excel("data/StateUIClaims_04052020.xlsx", sheet = "WE200404") %>%
+  left_join(tibble(STATE = state.name, location = state.abb)) %>%
+  select(location, advance_0404=Advance, updated_0322=`Prior Wk`) %>%
+  mutate(location = replace_na(location, "DC"))
+
+
+UI_Claims_April11_True <- read_excel("data/StateUIClaims_04112020.xlsx", sheet = "States") %>%
+  left_join(tibble(STATE = state.name, location = state.abb)) %>%
+  select(location, advance_0411=Advance, updated_0404=`Prior Wk`) %>%
+  mutate(location = replace_na(location, "DC"))
+
+
+UI_Claims_True = UI_Claims_March28_True %>% left_join(UI_Claims_April04_True) %>% left_join(UI_Claims_April11_True) %>% select(-`2 week total`)
 
 ## Read in Labor force data
 
@@ -317,15 +291,15 @@ report_UI_GT_data = report_level_UI_data_fill %>%
   mutate(ui_norm = claims / baseline_ui)
 
 model_report_daily = lm(ui_norm ~ hits_norm, data =  report_UI_GT_data %>% 
-         filter(epiweek(week_end) == 12), weight = baseline_ui)
+         filter(epiweek(week_end) <= 13), weight = baseline_ui)
 model_report_daily_unweighted = lm(ui_norm ~ hits_norm, data =  report_UI_GT_data %>% 
-         filter(epiweek(week_end) == 12))
+         filter(epiweek(week_end) <= 13))
 ```
 
 ```{r, include=FALSE, message=FALSE, warning=FALSE}
 
 daily_predict_data = data_states_short %>% 
-  filter(epiweek(date) > 11 & epiweek(date) < 15) %>%
+  filter(epiweek(date) > 11 & epiweek(date) <= 16) %>%
   mutate(dow = wday(date)) %>%
   left_join(growth_rate_weekly %>% 
               select(location, early, dow)) %>%
@@ -388,13 +362,19 @@ report_output_text = weekly_predict_data %>%
          predicted_ui_ub = predicted_ui_ub_report/1e6) %>%
   mutate(predicted_ui_sa = case_when(week == 12 ~ predicted_ui/0.833,
                                      week == 13 ~ predicted_ui/0.876,
-                                     week == 14 ~ predicted_ui*1.065),
+                                     week == 14 ~ predicted_ui*1.065,
+                                     week == 15 ~ predicted_ui*1.065,
+                                     week == 16 ~ predicted_ui*1.065),
          predicted_ui_lb_sa = case_when(week == 12 ~ predicted_ui_lb/0.833,
                                      week == 13 ~ predicted_ui_lb/0.876,
-                                     week == 14 ~ predicted_ui_lb*1.065),
+                                     week == 14 ~ predicted_ui_lb*1.065,
+                                     week == 15 ~ predicted_ui_lb*1.065,
+                                     week == 16 ~ predicted_ui_lb*1.065),
          predicted_ui_ub_sa = case_when(week == 12 ~ predicted_ui_ub/0.833,
                                      week == 13 ~ predicted_ui_ub/0.876,
-                                     week == 14 ~ predicted_ui_ub*1.065)) %>%
+                                     week == 14 ~ predicted_ui_ub*1.065,
+                                     week == 15 ~ predicted_ui_ub*1.065,
+                                     week == 16 ~ predicted_ui_ub*1.065)) %>%
   select(week, predicted_ui, predicted_ui_lb, predicted_ui_ub,
          ends_with("sa")) %>%
   group_by(week) %>% summarize_all(sum) 
@@ -509,10 +489,10 @@ state_labels = data_states_short %>%
 
 
 plot_data_ntl = national_trend %>% mutate(date = date(date)) %>%
-  filter(date >= ymd("2020-02-22") & date <= ymd("2020-03-31")) %>%
+  filter(date >= ymd("2020-02-22") & date <= ymd("2020-04-20")) %>%
   mutate(location = "USA") %>%
   bind_rows(data_states_short %>% filter(date >= ymd("2020-02-22")) %>% 
-              filter(location %in% c("NY", "CA", "OH", "PA", "MI", "FL", "IL")))
+              filter(location %in% c("NY", "CA", "OH", "PA", "MI", "FL", "AZ")))
 
 plot_data_ntl$location <- relevel(as.factor(plot_data_ntl$location), "USA")
 dates = plot_data_ntl %>% select(date) %>% unique()
@@ -542,6 +522,12 @@ ggplot() +
                   ymin=-Inf, ymax=Inf),
             fill='grey', alpha=0.25) +
     geom_rect(aes(xmin=dates$date[sats[6]], xmax=dates$date[suns[6]],
+                  ymin=-Inf, ymax=Inf),
+            fill='grey', alpha=0.25) +
+      geom_rect(aes(xmin=dates$date[sats[7]], xmax=dates$date[suns[7]],
+                  ymin=-Inf, ymax=Inf),
+            fill='grey', alpha=0.25) +
+      geom_rect(aes(xmin=dates$date[sats[8]], xmax=dates$date[suns[8]],
                   ymin=-Inf, ymax=Inf),
             fill='grey', alpha=0.25) +
   theme_classic(base_size=15) +
@@ -639,7 +625,8 @@ We additionally report the non-seasonally adjusted numbers below as well.
 weekly_predict_data  %>%  ungroup() %>% 
   mutate(week_str = case_when(week == 12 ~ "3/15-3/21",
                               week == 13 ~ "3/22-3/28",
-                              week == 14 ~ "3/29-4/4")) %>% 
+                              week == 14 ~ "3/29-4/4",
+                              week == 15 ~ "4/5-4/11")) %>% 
   group_by(week_str) %>%
   mutate(predicted_ui_report = predicted_ui_report/1e6,
          predicted_ui_lb_report = predicted_ui_lb_report/1e6,
@@ -957,6 +944,7 @@ ggplot(data = evaluation) +
 
 ```
 
+
 # Appendix
 
 ## Latest Results
@@ -976,16 +964,84 @@ report_output %>% left_join(UI_Claims_March28_True %>% rename(State = location))
   add_header_above(c(" " = 1, "Week 3/15-3/21" = 4, "Week 3/22-3/28" = 3, "Combined Weeks 3/15-3/28"=2)) %>%
   scroll_box(width = "1000px", height = "400px")
 
-weekly_predict_data %>% ungroup() %>% filter(week == 12 | week == 13) %>%
+weekly_predict_data %>% ungroup() %>% filter(week == 12 | week == 13 | week == 14) %>%
   select(location, week, predicted_ui = predicted_ui_report) %>%
   spread(week, predicted_ui) %>%
   left_join(UI_Claims_March21_True) %>%
   left_join(growth_rate_weekly3) %>%
   rename(State = location) %>%
   mutate(google_12 = late - early,
-         google_13 = late_nyt - early) %>%
-  select(State,  Advance, google_12, `12`,  google_13, `13`) %>% 
+         google_13 = late_nyt - early,
+         google_14 = late_next - early) %>%
+  select(State,  Advance, google_12, `12`,  google_13, `13`, google_14, `14`) %>% 
   mutate(Total = `12` + `13`) %>% 
-  select(State, pred_total = Total, pred_0315 = `12`, pred_0322 =`13`,) %>%
-  write_csv("data/state_predictions_weekly03312020.csv")
+  select(State, pred_total = Total, pred_0315 = `12`, pred_0322 =`13`, pred_0328 =`14`, 
+         google_0315 = google_12, google_0322 = google_13, google_0328 = google_14) %>%
+  write_csv("data/state_predictions_weekly4042020.csv")
 ```
+
+
+
+<!-- ```{r} -->
+<!-- regions <- read_excel("data/regions.xlsx") -->
+<!-- plot_data = growth_rate_weekly3 %>%  -->
+<!--   mutate(late = late - early, -->
+<!--          late_nyt = late_nyt - early, -->
+<!--          late_next = late_next - early) %>% -->
+<!--   select(location, `3/15-3/21`=late,  -->
+<!--          `3/22-3/28` = late_nyt,  -->
+<!--          `3/29-3/31` =late_next) %>%  -->
+<!--   gather(time_period, val, -location)  %>% -->
+<!--   inner_join(regions)  -->
+<!-- plot_data$time_period <- fct_rev(plot_data$time_period ) -->
+<!-- ggplot(data = plot_data) + geom_col(aes(y = val, x = reorder(location, -val), fill = as.factor(time_period)), position = "dodge") + coord_flip() + theme_classic(base_size = 16) + -->
+<!--   labs(y = "Change in Google Trends from baseline", -->
+<!--        x = "", -->
+<!--        title = "Growth in search history relative to baseline (2/22-3/14)", -->
+<!--        subtitle = "Searches for 'file for unemployment'", -->
+<!--        fill = "Time Period" -->
+<!--   ) + -->
+<!--   theme(strip.background = element_blank()) + -->
+<!--   facet_wrap(~bigregion, scales = "free_y") -->
+<!-- ``` -->
+
+<!-- plot_data = weekly_predict_data %>%  filter(location != "DC") %>%  -->
+<!--   mutate(week_str = case_when(week == 12 ~ "3/15-3/21", -->
+<!--                               week == 13 ~ "3/22-3/28", -->
+<!--                               week == 14 ~ "3/29-4/4", -->
+<!--                               week == 15 ~ "4/5-4/11")) %>% -->
+<!--   left_join(lf_state) %>% mutate(share = predicted_ui_report/labor_force) %>% select(location, week_str, share, predicted_ui_report)  -->
+
+<!--   plot_data %>% spread(week_str, predicted_ui_report) %>% write_csv("state_level_predictions.csv") -->
+
+
+<!-- ggplot(data = plot_data %>% filter(week == 15)) + geom_col(aes(y = share, x = reorder(location, -share)))  + coord_flip() + theme_classic(base_size = 24) + theme(axis.text = element_text(size = 16)) labs(y = "Predicted Share of Labor Force Filed for UI", x="", title = "Predictions of Initial State UI claims for Week 4/5-4/11")  + scale_y_continuous(expand = c(0, 0)) -->
+
+<!-- ggplot(data = plot_data %>% filter(week_str == "4/5-4/11")) + geom_bar(aes(y = share, x = reorder(location, -share), width=labor_force))  + coord_flip() + theme_classic(base_size = 24) + theme(axis.text = element_text(size = 16)) + labs(y = "Predicted Share of Labor Force Filed for UI", x="", title = "Predictions of Initial State UI claims for Week 4/5-4/11")  + scale_y_continuous(expand = c(0, 0)) -->
+
+<!-- plot_data = plot_data %>%  filter(week_str == "4/5-4/11") %>% arrange(share) -->
+<!-- plot_data$right <- cumsum(plot_data$labor_force) + 30*c(0:(nrow(plot_data)-1)) -->
+<!-- plot_data$left <- plot_data$right - plot_data$labor_force  -->
+<!-- ```{r} -->
+<!-- sum(plot_data$labor_force) -->
+<!-- ggplot(plot_data, aes(ymin = 0)) + -->
+<!--   geom_rect(aes( -->
+<!--     xmin = left / sum(plot_data$labor_force), -->
+<!--     xmax = right / sum(plot_data$labor_force), -->
+<!--     ymax = share -->
+<!--   )) + -->
+<!--   coord_flip() + -->
+<!--   geom_text_repel(aes( -->
+<!--     y = share , -->
+<!--     x = (left / sum(plot_data$labor_force))  + (right - left) / (2 * sum(plot_data$labor_force)), -->
+<!--     label = location, color=location -->
+<!--   ), hjust = "left") + -->
+<!--   theme_classic(base_size = 24) + -->
+<!--   theme(axis.text = element_text(size = 16), -->
+<!--         legend.position = "none") + -->
+<!--   labs(y = "Predicted Share of Labor Force Filed for UI", -->
+<!--        x = "State Share of Labor Force", -->
+<!--        title = "Predictions of Initial State UI claims for Week 4/5-4/11") + -->
+<!--   scale_y_continuous(expand = c(0, 0), limits = c(0, 0.12)) -->
+
+<!-- ``` -->
