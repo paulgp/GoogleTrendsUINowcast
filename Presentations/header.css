@@ -1,0 +1,111 @@
+body {
+    background-size: 20%;
+    background-repeat: no-repeat;
+    background-position: 96% 96%;
+}
+
+
+.background-img{
+    background: url(Yale-SOM-Logo-1024x525.png);
+    width:20%;
+    repeat: no-repeat;
+}
+
+slides > slide.backdrop {
+  background: white;
+}
+
+.reveal section img {
+    background:none;
+    border:none;
+    box-shadow:none;
+}
+
+
+.reveal h2 {
+    color:#0f4d92;
+    margin: 0.5em 0;
+}
+
+.reveal h1 {
+    color:#0f4d92;
+}
+
+.reveal li {
+  margin: 15px 0;
+}
+
+#left {
+  left:-8.33%;
+  text-align: left;
+  float: left;
+  width:50%;
+  z-index:-10;
+}
+
+#left2 {
+  left:-8.33%;
+  text-align: left;
+  float: left;
+  width:70%;
+  z-index:-10;
+}
+
+
+#right {
+  left:31.25%;
+  top: 75px;
+  float: right;
+  text-align: center;
+  z-index:-10;
+  width:50%;
+}
+
+
+#right {
+  left:31.25%;
+  top: 75px;
+  float: right;
+  text-align: center;
+  z-index:-10;
+  width:30%;
+}
+
+.column-left{
+  float: left;
+  width: 50%;
+  text-align: left;
+}
+.column-right{
+  float: right;
+  width: 50%;
+  text-align: left;
+}
+.column-left2{
+  float: left;
+  width: 70%;
+  text-align: left;
+}
+.column-right2{
+  float: right;
+  width: 30%;
+  text-align: left;
+}
+
+.column-right-center{
+  float: right;
+  width: 50%;
+  text-align: center;
+}
+
+.col2 {
+    columns: 2 200px;         /* number of columns and width in pixels*/
+    -webkit-columns: 2 200px; /* chrome, safari */
+    -moz-columns: 2 200px;    /* firefox */
+}
+.col3 {
+    columns: 3 100px;
+    -webkit-columns: 3 100px;
+    -moz-columns: 3 100px;
+}
+
