@@ -457,7 +457,7 @@ my_blue = brewer.pal(n = 9, "Blues")[3:9]
 ###Plot one state with both policies as an example (add daily UI first)###
 
 #Set these to whatever you want! note to liz: make this a function later
-  plotstate = "WI" #Change this to see another state
+  plotstate = "CA" #Change this to see another state
   cares = as.Date("2020-03-27")
 
 #Merge in daily UI data
