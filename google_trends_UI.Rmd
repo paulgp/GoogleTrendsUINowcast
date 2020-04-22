@@ -3,7 +3,6 @@ title: "Predicting Initial Unemployment Insurance Claims Using Google Trends"
 author: "Paul Goldsmith-Pinkham + Aaron Sojourner"
 date: "4/3/2020"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
 ---
@@ -476,7 +475,7 @@ More specifically, to quote Seth Stephens-Davidowitz:
 
 We pull a dataset of all fifty states (as well as Washington DC and the national trend ("USA")), collecting an index of the relative search volume for "file for unemployment." A crucial feature of the Google Trends API is it is only possible to compare five locations per search. To elide this issue, we pull data for California plus four states, and continuously renormalize each state by $\max{Index_{s}}/\max{Index_{CA}}$. This way, all states are relative to California (and now some of the index measures will be larger than 100.), and comparisons can be made both across time and geographies.
 
-We pull data for all states, as well as the national trend, from February 1st to March 28th (the latest that the data is currently available). We plot the relative indices for select states below, and see that similar to the UI growth in our news data, there is also substantial differences across states in the growth of the search term. Additionally, the weekend effect is quite noticeable, with far more search activity on the Monday after a weekend and the Friday before.
+We pull data for all states, as well as the national trend, from February 1st to April 18th (the latest that the data is currently available). We plot the relative indices for select states below, and see that similar to the UI growth in our news data, there is also substantial differences across states in the growth of the search term. Additionally, the weekend effect is quite noticeable, with far more search activity on the Monday after a weekend and the Friday before.
 
 
 ```{r, fig.height = 8, fig.width=10, echo=FALSE, warning=FALSE, message=FALSE}
@@ -508,7 +507,7 @@ ggplot() +
   geom_line(data = plot_data_ntl, aes(y = hits, x = date(date), color= as.factor(location))) +
   scale_x_date(date_breaks = "7 days", date_labels = "%m-%d") +
   geom_text_repel(data = plot_data_ntl %>% group_by(location) %>% filter(row_number() == n()),
-                  aes(y = hits, x = date, label = location, color=location),
+                  aes(y = hits, x = date, label = location, color=location), segment.alpha = 0.5,
                   nudge_x = 1.5, show.legend=FALSE) +
   geom_rect(aes(xmin=dates$date[sats[1]], xmax=dates$date[suns[1]],
                   ymin=-Inf, ymax=Inf),
@@ -539,7 +538,7 @@ ggplot() +
   labs(x = "Date",
        y = "",
        title="Daily Google search intensity  for 'File for unemployment'",
-       subtitle = "From 2020-2-22 to 2020-3-28, highlighting national trend and select states",
+       subtitle = "From 2020-2-22 to 2020-4-18, highlighting national trend and select states",
        caption = "Weekends shaded",
        color = "Search Regions"
   )
@@ -927,7 +926,6 @@ evaluation = weekly_predict_data %>% group_by(location) %>%
   filter(week == 12 | week == 13) %>%
   summarize(predicted_ui_report = sum(predicted_ui_report)) %>%
   left_join(UI_Claims_March28_True) %>%
-  select(State, `UI Claims From News`, `Google Trends Change`, Advance, `Predicted UI Claims`, `Forecasted UI Claims`)
   mutate(advance_sum = advance_0322 + updated_0315) %>%
   select(`State` = location,
          Advance = advance_sum,
